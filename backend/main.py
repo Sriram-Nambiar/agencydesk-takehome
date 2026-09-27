@@ -21,6 +21,9 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS", "devpass")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
+from contextlib import asynccontextmanager
+from database import get_db, get_connection_pool, close_connection_pool
+
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
 if not SECRET_KEY and os.getenv("ENVIRONMENT") == "production":
@@ -29,7 +32,17 @@ SECRET_KEY = SECRET_KEY or "dev-only-change-me-before-deploying"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-app = FastAPI(title="AgencyDesk Flat Backend")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize connection pool on startup
+    get_connection_pool()
+    yield
+    # Gracefully drain and close connection pool on shutdown
+    close_connection_pool()
+
+
+app = FastAPI(title="AgencyDesk Flat Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,16 +85,6 @@ def readiness_probe():
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {exc}")
 
-
-def get_db():
-    return psycopg2.connect(
-        host=DB_HOST,
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        port=DB_PORT,
-        cursor_factory=RealDictCursor
-    )
 
 def get_current_user(request: Request):
     auth_header = request.headers.get("authorization")
