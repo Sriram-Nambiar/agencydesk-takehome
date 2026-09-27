@@ -1,5 +1,6 @@
 import uuid
 import pytest
+from database import get_db
 
 
 class TestAgencyInvites:
@@ -118,6 +119,22 @@ class TestAgencyInvites:
         assert "token" in data
         assert "user_id" in data
         assert data["role"] == "agency_member"
+
+        conn = get_db()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT action, details FROM audit_events
+                       WHERE actor_id = %s AND agency_id = %s AND entity_type = 'membership'
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (data["user_id"], admin_acme_headers["X-Agency-ID"]),
+                )
+                event = cur.fetchone()
+            assert event is not None
+            assert event["action"] == "membership.created"
+            assert event["details"]["role"] == "agency_member"
+        finally:
+            conn.close()
 
         # Log in with the newly created account
         login_res = client.post(

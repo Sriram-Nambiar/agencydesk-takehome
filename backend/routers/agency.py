@@ -5,6 +5,7 @@ from jose import jwt
 from database import get_db
 from schemas import InviteCreateRequest, InviteAcceptRequest
 from deps import get_current_user, get_membership, pwd_context, SECRET_KEY, ALGORITHM
+from services.audit import record_audit_event
 
 router = APIRouter(tags=["Agency & Invites"])
 
@@ -118,15 +119,31 @@ async def accept_invite(payload: InviteAcceptRequest):
                     raise HTTPException(status_code=400, detail="New accounts need a name and a password of 8 to 72 characters")
                 cur.execute("INSERT INTO users (email, password_hash, full_name) VALUES (%s, %s, %s) RETURNING id", (invite["email"].lower(), pwd_context.hash(payload.password), full_name))
                 user_id = cur.fetchone()["id"]
-            cur.execute("SELECT role, client_id, removed_at FROM agency_memberships WHERE user_id=%s AND agency_id=%s", (user_id, invite["agency_id"]))
+            cur.execute("SELECT id, role, client_id, removed_at FROM agency_memberships WHERE user_id=%s AND agency_id=%s", (user_id, invite["agency_id"]))
             existing = cur.fetchone()
+            membership_id = existing["id"] if existing else None
+            membership_action = None
             if existing and not existing["removed_at"]:
                 if existing["role"] != invite["role"] or existing["client_id"] != invite["client_id"]:
                     raise HTTPException(status_code=409, detail="This account already has a different role in the agency")
             elif existing:
-                cur.execute("UPDATE agency_memberships SET role=%s, client_id=%s, removed_at=NULL WHERE user_id=%s AND agency_id=%s", (invite["role"], invite["client_id"], user_id, invite["agency_id"]))
+                cur.execute("UPDATE agency_memberships SET role=%s, client_id=%s, removed_at=NULL WHERE user_id=%s AND agency_id=%s RETURNING id", (invite["role"], invite["client_id"], user_id, invite["agency_id"]))
+                membership_id = cur.fetchone()["id"]
+                membership_action = "membership.reactivated"
             else:
-                cur.execute("INSERT INTO agency_memberships (user_id, agency_id, role, client_id) VALUES (%s, %s, %s, %s)", (user_id, invite["agency_id"], invite["role"], invite["client_id"]))
+                cur.execute("INSERT INTO agency_memberships (user_id, agency_id, role, client_id) VALUES (%s, %s, %s, %s) RETURNING id", (user_id, invite["agency_id"], invite["role"], invite["client_id"]))
+                membership_id = cur.fetchone()["id"]
+                membership_action = "membership.created"
+            if membership_action:
+                record_audit_event(
+                    cur,
+                    agency_id=invite["agency_id"],
+                    actor_id=user_id,
+                    action=membership_action,
+                    entity_type="membership",
+                    entity_id=membership_id,
+                    details={"role": invite["role"], "client_id": invite["client_id"]},
+                )
             if invite["status"] == "pending":
                 cur.execute("UPDATE agency_invites SET status='accepted' WHERE id=%s", (invite["id"],))
             conn.commit()
