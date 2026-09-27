@@ -6,7 +6,7 @@ A small multi-tenant agency and client workspace built with React, FastAPI, and 
 
 Requirements: Docker Desktop, Node.js 20+, and Python 3.10+.
 
-1. Start PostgreSQL: `docker compose up -d postgres`
+1. Start PostgreSQL and Redis: `docker compose up -d`
 2. Start the API in one terminal:
    ```powershell
    cd backend
@@ -15,11 +15,14 @@ Requirements: Docker Desktop, Node.js 20+, and Python 3.10+.
    pip install -r requirements.txt
    uvicorn main:app --reload
    ```
-3. Seed the two sample agencies in another terminal: `cd backend; python seed.py`
+3. Seed the sample agencies, workflows, and demo data: `cd backend; python seed.py`
 4. Start the UI: `cd frontend; npm install; npm run dev`
-5. Open the Vite URL. Sample logins use password `password123`: `alex@example.com` (admin / second-tenant client), `sarah@acme.com` (member), and `john@starlight.com` (client).
+5. Open the Vite URL. Sample logins use password `password123`:
+   - `alex@example.com` (Agency Admin / Beta Client User)
+   - `sarah@acme.com` (Agency Staff Member)
+   - `john@starlight.com` (Client Portal User)
 
-For a fresh database after schema changes, run `docker compose down -v` and then `docker compose up -d postgres` before seeding. This deletes local PostgreSQL data.
+For a fresh database and redis state after schema changes, run `docker compose down -v` and then `docker compose up -d` before seeding.
 
 For an existing database created from the original assignment schema, apply `backend/migrations/001_tenant_boundaries.sql` once with `psql` before starting the updated API.
 
