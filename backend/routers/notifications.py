@@ -73,15 +73,18 @@ async def get_unread_notification_count(
     if not agency_id:
         raise HTTPException(status_code=400, detail="Missing X-Agency-ID header")
 
-    # 1. Attempt rapid Redis cache lookup
-    cached = get_cached_unread_count(agency_id, str(user_id))
-    if cached is not None:
-        return {"unread_count": cached, "cached": True}
-
-    # 2. Fall back to PostgreSQL count and populate Redis cache
     conn = get_db()
     try:
+        # Authorization must run before a cache lookup. Otherwise stale cache
+        # data could survive membership revocation and bypass tenant isolation.
         get_membership(conn, user_id, agency_id)
+
+        # 1. Attempt rapid Redis cache lookup
+        cached = get_cached_unread_count(agency_id, str(user_id))
+        if cached is not None:
+            return {"unread_count": cached, "cached": True}
+
+        # 2. Fall back to PostgreSQL count and populate Redis cache
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(*) as unread_count FROM notifications WHERE agency_id = %s AND user_id = %s AND is_read = FALSE",

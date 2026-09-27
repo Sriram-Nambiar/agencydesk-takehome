@@ -28,6 +28,18 @@ class TestNotificationsAndAutomations:
         assert res2.status_code == 200
         assert res2.json()["unread_count"] == count1
 
+    def test_unread_count_cache_does_not_bypass_membership(self, client, client_acme_headers, agencies):
+        """A cached count must not grant access to an agency without membership."""
+        user_id = client.get(
+            "/auth/me", headers={"Authorization": client_acme_headers["Authorization"]}
+        ).json()["id"]
+        beta_id = agencies["beta"]
+        assert get_redis().set(f"agencydesk:unread:{beta_id}:{user_id}", 99, ex=300)
+
+        headers = {**client_acme_headers, "X-Agency-ID": beta_id}
+        response = client.get("/notifications/unread-count", headers=headers)
+        assert response.status_code == 403
+
     def test_mark_notification_as_read_and_read_all(self, client, member_acme_headers):
         """Test marking a single notification as read and read-all."""
         res = client.get("/notifications", headers=member_acme_headers)
@@ -202,4 +214,3 @@ class TestNotificationsAndAutomations:
         # Client notification count must remain completely unchanged!
         c_after = client.get("/notifications", headers=client_acme_headers).json()["unread_count"]
         assert c_after == c_init, "Client unread count must NOT change for internal events"
-
