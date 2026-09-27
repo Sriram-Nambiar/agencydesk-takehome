@@ -6,13 +6,15 @@ import { TaskBoard } from './components/TaskBoard';
 import { TaskList } from './components/TaskList';
 import { TaskModal } from './components/TaskModal';
 import { NewTaskModal } from './components/NewTaskModal';
+import { NewProjectModal } from './components/NewProjectModal';
+import { TeamModal } from './components/TeamModal';
 import { LoginModal } from './components/LoginModal';
 import type { Project, Task, TaskStatus } from './types';
 import { api } from './api';
 import './App.css';
 
 const WorkspaceDashboard: React.FC = () => {
-  const { user, activeAgency, isClientUser, isLoading: authLoading } = useAuth();
+  const { user, activeAgency, activeRole, isClientUser, isLoading: authLoading } = useAuth();
 
   // State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -34,6 +36,8 @@ const WorkspaceDashboard: React.FC = () => {
   // Modal state
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
 
   // Fetch Projects for Active Agency
   const loadProjects = useCallback(async () => {
@@ -175,7 +179,10 @@ const WorkspaceDashboard: React.FC = () => {
   return (
     <div className="app-container">
       {/* Navigation Header */}
-      <Header />
+      <Header
+        onOpenNewProject={() => setIsNewProjectModalOpen(true)}
+        onOpenTeamModal={() => setIsTeamModalOpen(true)}
+      />
 
       {/* Main Workspace Body */}
       <main className="main-content">
@@ -190,11 +197,38 @@ const WorkspaceDashboard: React.FC = () => {
             Loading workspaces & projects...
           </div>
         ) : projects.length === 0 ? (
-          <div className="box" style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <h3 style={{ fontSize: 16, marginBottom: 6 }}>No Projects Found</h3>
-            <p style={{ color: '#5e6c84', fontSize: 13 }}>
-              There are no projects created yet for <strong>{activeAgency?.agency_name}</strong>.
+          <div className="box" style={{ textAlign: 'center', padding: '48px 24px', maxWidth: 600, margin: '40px auto' }}>
+            <div style={{ fontSize: 38, marginBottom: 12 }}>🚀</div>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: '#172b4d' }}>
+              Welcome to {activeAgency?.agency_name}!
+            </h3>
+            <p style={{ color: '#5e6c84', fontSize: 13.5, lineHeight: 1.5, marginBottom: 24 }}>
+              {!isClientUser
+                ? "Your agency workspace is ready. Create your first project to start organizing tasks, assigning team members, and collaborating with clients."
+                : "There are no active projects visible in your client portal. Contact your agency administrator to be assigned to deliverables."}
             </p>
+            {!isClientUser && (
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ padding: '8px 18px', fontSize: 13.5 }}
+                  onClick={() => setIsNewProjectModalOpen(true)}
+                >
+                  + Create Your First Project
+                </button>
+                {activeRole === 'agency_admin' && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 16px', fontSize: 13.5 }}
+                    onClick={() => setIsTeamModalOpen(true)}
+                  >
+                    👥 Team & Clients
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -212,6 +246,7 @@ const WorkspaceDashboard: React.FC = () => {
               showInternalOnly={showInternalOnly}
               onToggleInternalOnly={setShowInternalOnly}
               onOpenNewTaskModal={() => setIsNewTaskModalOpen(true)}
+              onOpenNewProjectModal={() => setIsNewProjectModalOpen(true)}
               totalHoursLogged={totalHoursLogged}
               tasksCount={tasks.length}
               completedTasksCount={completedCount}
@@ -257,6 +292,23 @@ const WorkspaceDashboard: React.FC = () => {
           onTaskCreated={loadTasks}
         />
       )}
+
+      {/* Create New Project Modal */}
+      <NewProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        onProjectCreated={async (project) => {
+          await loadProjects();
+          setSelectedProject(project);
+        }}
+      />
+
+      {/* Team & Clients Modal */}
+      <TeamModal
+        isOpen={isTeamModalOpen}
+        onClose={() => setIsTeamModalOpen(false)}
+        isAdmin={activeRole === 'agency_admin'}
+      />
     </div>
   );
 };

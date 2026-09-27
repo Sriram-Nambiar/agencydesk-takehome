@@ -51,3 +51,28 @@ class TestAgencyDirectory:
     def test_get_clients_missing_agency_header(self, client, client_token):
         res = client.get("/agency/clients", headers={"Authorization": f"Bearer {client_token}"})
         assert res.status_code == 400
+
+    def test_create_client_as_admin(self, client, admin_acme_headers):
+        res = client.post(
+            "/agency/clients",
+            headers=admin_acme_headers,
+            json={"name": "Tesla Motors"},
+        )
+        assert res.status_code == 200
+        data = res.json()["client"]
+        assert data["name"] == "Tesla Motors"
+        assert "id" in data
+
+        # Verify listed in clients
+        list_res = client.get("/agency/clients", headers=admin_acme_headers)
+        assert any(c["name"] == "Tesla Motors" for c in list_res.json()["clients"])
+
+    def test_create_client_as_client_forbidden(self, client, client_acme_headers):
+        res = client.post(
+            "/agency/clients",
+            headers=client_acme_headers,
+            json={"name": "Forbidden Client"},
+        )
+        assert res.status_code == 403
+        assert "Client users cannot create clients" in res.json().get("detail", "")
+

@@ -15,6 +15,7 @@ interface ProjectOverviewProps {
   showInternalOnly: boolean;
   onToggleInternalOnly: (val: boolean) => void;
   onOpenNewTaskModal: () => void;
+  onOpenNewProjectModal?: () => void;
   totalHoursLogged?: number;
   tasksCount: number;
   completedTasksCount: number;
@@ -33,6 +34,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   showInternalOnly,
   onToggleInternalOnly,
   onOpenNewTaskModal,
+  onOpenNewProjectModal,
   totalHoursLogged = 0,
   tasksCount,
   completedTasksCount,
@@ -60,6 +62,17 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               </button>
             );
           })}
+          {!isClientUser && onOpenNewProjectModal && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginLeft: 6 }}
+              onClick={onOpenNewProjectModal}
+              title="Create a new project"
+            >
+              + New Project
+            </button>
+          )}
         </div>
 
         {/* New Task Button (Agency only) */}

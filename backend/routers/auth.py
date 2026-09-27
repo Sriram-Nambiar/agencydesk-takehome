@@ -39,6 +39,9 @@ async def register(payload: RegisterRequest):
             cur.execute("INSERT INTO agencies (name) VALUES (%s) RETURNING id", (payload.agency_name,))
             agency_id = cur.fetchone()["id"]
 
+            # Create default starter client for the agency
+            cur.execute("INSERT INTO clients (agency_id, name) VALUES (%s, %s)", (agency_id, "General Client"))
+
             # Create Membership as Admin
             cur.execute(
                 "INSERT INTO agency_memberships (user_id, agency_id, role) VALUES (%s, %s, 'agency_admin')",

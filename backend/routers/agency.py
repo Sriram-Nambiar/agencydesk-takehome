@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Depends
 from jose import jwt
 from database import get_db
-from schemas import InviteCreateRequest, InviteAcceptRequest
+from schemas import InviteCreateRequest, InviteAcceptRequest, ClientCreateRequest
 from deps import get_current_user, get_membership, pwd_context, SECRET_KEY, ALGORITHM
 from services.audit import record_audit_event
 
@@ -57,6 +57,44 @@ async def get_agency_clients(request: Request, user_id: str = Depends(get_curren
             else:
                 cur.execute("SELECT id, name FROM clients WHERE agency_id = %s ORDER BY name ASC", (agency_id,))
             return {"clients": cur.fetchall()}
+    finally:
+        conn.close()
+
+
+@router.post("/agency/clients")
+async def create_agency_client(request: Request, payload: ClientCreateRequest, user_id: str = Depends(get_current_user)):
+    """Create a new client entity in the active agency."""
+    agency_id = request.headers.get("x-agency-id")
+    if not agency_id:
+        raise HTTPException(status_code=400, detail="Missing X-Agency-ID header")
+
+    conn = get_db()
+    try:
+        membership = get_membership(conn, user_id, agency_id)
+        if membership["role"] == "client_user":
+            raise HTTPException(status_code=403, detail="Client users cannot create clients")
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO clients (agency_id, name)
+                VALUES (%s, %s)
+                RETURNING id, agency_id, name, created_at
+                """,
+                (agency_id, payload.name)
+            )
+            client = cur.fetchone()
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="client.created",
+                entity_type="client",
+                entity_id=client["id"],
+                details={"name": payload.name},
+            )
+            conn.commit()
+            return {"client": client}
     finally:
         conn.close()
 

@@ -1,9 +1,65 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
+from schemas import ProjectCreateRequest
 from deps import get_current_user, get_membership, require_project_access, parse_uuid
 from services.audit import record_audit_event
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
+
+
+@router.post("")
+async def create_project(request: Request, payload: ProjectCreateRequest, user_id: str = Depends(get_current_user)):
+    """Create a new project scoped to a client within the active agency."""
+    agency_id = request.headers.get("x-agency-id")
+    if not agency_id:
+        raise HTTPException(status_code=400, detail="Missing X-Agency-ID header")
+
+    conn = get_db()
+    try:
+        membership = get_membership(conn, user_id, agency_id)
+        if membership["role"] == "client_user":
+            raise HTTPException(status_code=403, detail="Client users cannot create projects")
+
+        with conn.cursor() as cur:
+            # Verify client exists and belongs to this agency
+            cur.execute("SELECT id, name FROM clients WHERE id = %s AND agency_id = %s", (str(payload.client_id), agency_id))
+            client = cur.fetchone()
+            if not client:
+                raise HTTPException(status_code=400, detail="Client not found in this agency")
+
+            cur.execute(
+                """
+                INSERT INTO projects (agency_id, client_id, name, description)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, agency_id, client_id, name, description, created_at
+                """,
+                (agency_id, str(payload.client_id), payload.name, payload.description or "")
+            )
+            project = cur.fetchone()
+            project["client_name"] = client["name"]
+            project["task_count"] = 0
+            project["completed_task_count"] = 0
+            project["total_hours_logged"] = 0.0
+
+            # Always add creator to project_members so agency_members have access
+            cur.execute(
+                "INSERT INTO project_members (project_id, user_id, agency_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                (project["id"], user_id, agency_id)
+            )
+
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="project.created",
+                entity_type="project",
+                entity_id=project["id"],
+                details={"name": payload.name, "client_id": str(payload.client_id)},
+            )
+            conn.commit()
+            return {"project": project}
+    finally:
+        conn.close()
 
 
 @router.get("")

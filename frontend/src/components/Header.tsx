@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { NotificationPopover } from './NotificationPopover';
-import { AutomationsModal } from './AutomationsModal';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onOpenNewProject?: () => void;
+  onOpenTeamModal?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenNewProject, onOpenTeamModal }) => {
   const { user, memberships, activeAgency, activeRole, switchAgency, logout, quickLogin } = useAuth();
-  const [isAutomationsOpen, setIsAutomationsOpen] = useState(false);
 
   const getRoleBadge = () => {
     if (activeRole === 'agency_admin') {
@@ -71,15 +74,26 @@ export const Header: React.FC = () => {
           </button>
         </div>
 
-        {/* Automations button for agency staff */}
-        {activeRole !== 'client_user' && (
+        {/* Action buttons for agency users */}
+        {activeRole !== 'client_user' && onOpenNewProject && (
           <button
             type="button"
-            className="btn btn-secondary btn-sm automations-trigger"
-            onClick={() => setIsAutomationsOpen(true)}
-            title="Configure Redis Workflow Automations"
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenNewProject}
+            title="Create a new project"
           >
-            ⚡ Automations
+            + New Project
+          </button>
+        )}
+
+        {activeRole === 'agency_admin' && onOpenTeamModal && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenTeamModal}
+            title="Manage team members, clients, and invites"
+          >
+            👥 Team & Clients
           </button>
         )}
 
@@ -97,13 +111,6 @@ export const Header: React.FC = () => {
           Sign Out
         </button>
       </div>
-
-      {/* Automations Config Modal */}
-      <AutomationsModal
-        isOpen={isAutomationsOpen}
-        onClose={() => setIsAutomationsOpen(false)}
-        isAdmin={activeRole === 'agency_admin'}
-      />
     </header>
   );
 };

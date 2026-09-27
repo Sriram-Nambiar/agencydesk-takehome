@@ -41,6 +41,32 @@ class LoginRequest(BaseModel):
         return cleaned
 
 
+class ClientCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Client name cannot be blank")
+        return cleaned
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    client_id: UUID
+    description: Optional[str] = ""
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Project name cannot be blank")
+        return cleaned
+
+
 class TaskCreateRequest(BaseModel):
     project_id: UUID
     title: str = Field(..., min_length=1, max_length=240)

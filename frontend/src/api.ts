@@ -134,6 +134,18 @@ class ApiService {
     return this.request<{ project: Project; tasks: Task[]; total_hours_logged?: number }>(endpoint);
   }
 
+  async createProject(data: {
+    name: string;
+    client_id: string;
+    description?: string;
+  }): Promise<Project> {
+    const res = await this.request<{ project: Project }>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res.project;
+  }
+
   // Tasks
   async createTask(data: {
     project_id: string;
@@ -258,6 +270,25 @@ class ApiService {
   async getAgencyClients(): Promise<AgencyClient[]> {
     const res = await this.request<{ clients: AgencyClient[] }>('/agency/clients');
     return res.clients;
+  }
+
+  async createClient(name: string): Promise<AgencyClient> {
+    const res = await this.request<{ client: AgencyClient }>('/agency/clients', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    return res.client;
+  }
+
+  async createInvite(data: {
+    email: string;
+    role: 'agency_admin' | 'agency_member' | 'client_user';
+    client_id?: string | null;
+  }): Promise<{ invite: unknown }> {
+    return this.request<{ invite: unknown }>('/agency/invites', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   // Notifications

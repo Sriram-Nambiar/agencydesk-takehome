@@ -215,3 +215,44 @@ class TestProjects:
 
         # Restore Sarah to project for subsequent tests
         client.put(f"/projects/{project_id}/members/{sarah_user_id}", headers=admin_acme_headers)
+
+    def test_create_project_as_admin(self, client, admin_acme_headers, sample_entities):
+        client_id = sample_entities["project"]["client_id"]
+        res = client.post(
+            "/projects",
+            headers=admin_acme_headers,
+            json={
+                "name": "Q4 Performance Marketing",
+                "client_id": client_id,
+                "description": "Comprehensive marketing sprint deliverables",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()["project"]
+        assert data["name"] == "Q4 Performance Marketing"
+        assert data["client_id"] == client_id
+        assert data["client_name"] == "Starlight Tech"
+
+        # Verify listed in projects
+        list_res = client.get("/projects", headers=admin_acme_headers)
+        assert any(p["name"] == "Q4 Performance Marketing" for p in list_res.json()["projects"])
+
+    def test_create_project_as_client_forbidden(self, client, client_acme_headers, sample_entities):
+        client_id = sample_entities["project"]["client_id"]
+        res = client.post(
+            "/projects",
+            headers=client_acme_headers,
+            json={"name": "Client Project Attempt", "client_id": client_id},
+        )
+        assert res.status_code == 403
+        assert "Client users cannot create projects" in res.json().get("detail", "")
+
+    def test_create_project_invalid_client(self, client, admin_acme_headers):
+        res = client.post(
+            "/projects",
+            headers=admin_acme_headers,
+            json={"name": "Invalid Client Project", "client_id": str(uuid.uuid4())},
+        )
+        assert res.status_code == 400
+        assert "Client not found in this agency" in res.json().get("detail", "")
+
