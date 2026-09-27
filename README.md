@@ -212,7 +212,15 @@ python backend/security_checks.py
 
 ### 2. Backend Automated Test Suite (Pytest)
 
-Executes 91 tests verifying API endpoints, Pydantic schemas, database foreign key constraints, and Redis event automations:
+Executes the backend integration suite against a dedicated `agencydesk_test` database, verifying API endpoints, schemas, tenant constraints, and workflow behavior. The test fixture refuses to run against a database whose name does not end in `_test`.
+
+Create the test database once if needed:
+
+```bash
+docker compose exec postgres psql -U postgres -d postgres -c "CREATE DATABASE agencydesk_test;"
+```
+
+Then run:
 
 ```bash
 cd backend

@@ -1,5 +1,6 @@
 import time
 import logging
+import uuid
 from typing import Callable
 from fastapi import Request, HTTPException, Depends
 from redis_client import get_redis
@@ -28,7 +29,9 @@ def is_rate_limited(key: str, limit: int, window_seconds: int) -> tuple[bool, in
         # 2. Count requests in the current window
         pipe.zcard(redis_key)
         # 3. Add current timestamp
-        pipe.zadd(redis_key, {str(now): now})
+        # Use a unique member per request; multiple calls may share the same
+        # clock tick, and ZSET members must not overwrite each other.
+        pipe.zadd(redis_key, {f"{now}:{uuid.uuid4()}": now})
         # 4. Set expiry on the set to auto-clean up idle keys
         pipe.expire(redis_key, window_seconds + 5)
         results = pipe.execute()

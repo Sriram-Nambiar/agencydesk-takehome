@@ -1,18 +1,44 @@
 import sys
 import os
 import pytest
+import psycopg2
 from fastapi.testclient import TestClient
+
+# Tests always run against a dedicated database. Never let the destructive
+# seed fixture default to the developer's normal `agencydesk` database.
+os.environ["DB_NAME"] = os.environ.get("TEST_DB_NAME", "agencydesk_test")
+if not os.environ["DB_NAME"].endswith("_test"):
+    raise RuntimeError("TEST_DB_NAME must end in _test; refusing to run against a non-test database")
 
 # Ensure backend directory is in path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from main import app
 from seed import seed_database
+from config import get_settings
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    """Ensure database has fresh sample seed data before test session."""
+    """Initialize and seed the isolated test database before the test session."""
+    settings = get_settings()
+    conn = psycopg2.connect(
+        host=settings.DB_HOST,
+        dbname=settings.DB_NAME,
+        user=settings.DB_USER,
+        password=settings.DB_PASS,
+        port=settings.DB_PORT,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.users')")
+            if cur.fetchone()[0] is None:
+                schema_path = os.path.join(os.path.dirname(__file__), "..", "schema.sql")
+                with open(schema_path, encoding="utf-8") as schema_file:
+                    cur.execute(schema_file.read())
+                conn.commit()
+    finally:
+        conn.close()
     seed_database()
 
 
@@ -136,4 +162,3 @@ def sample_client(client, admin_acme_headers):
     assert res.status_code == 200
     clients = res.json()["clients"]
     return next(c for c in clients if c["name"] == "Starlight Tech")
-

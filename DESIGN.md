@@ -94,4 +94,4 @@ The identity model separates **authentication (who you are)** from **authorizati
 - **Invite Idempotency**: Pending invites use `UNIQUE (agency_id, lower(email)) WHERE status = 'pending'`. Resending updates the token and expiration rather than creating duplicate records; accepting twice reuses the identity safely.
 - **Real File Uploads**: Multipart uploads (`POST /tasks/{id}/files/upload`) store assets to local disk storage (`uploads/`) with static serving at `/uploads/{uuid_filename}`.
 - **Event Bus & Automations (Redis)**: Redis pub/sub dispatches events (`file_needs_changes`, `task_done`) and evaluates configurable agency automation rules (e.g., auto-reopening tasks when changes are requested).
-- **Test Coverage**: 114 backend pytest integration tests (including explicit edge-case verifications) and 13 Vitest frontend unit tests.
+- **Test Coverage**: 118 backend pytest integration tests (including explicit edge-case verifications) and 13 Vitest frontend unit tests. Backend tests initialize and seed an isolated `agencydesk_test` database.
