@@ -5,6 +5,7 @@ from time import perf_counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -152,3 +153,7 @@ app.include_router(time_router.router)
 app.include_router(agency.router)
 app.include_router(notifications.router)
 app.include_router(automations.router)
+
+# Mount local uploads static file storage
+os.makedirs(get_settings().UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=get_settings().UPLOAD_DIR), name="uploads")

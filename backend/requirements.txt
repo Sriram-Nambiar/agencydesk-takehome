@@ -9,3 +9,4 @@ pytest
 httpx
 redis>=5.0.0
 pydantic-settings>=2.0.0
+python-multipart>=0.0.6

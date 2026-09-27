@@ -54,9 +54,12 @@ class ApiService {
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    }
 
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
@@ -189,6 +192,23 @@ class ApiService {
         is_internal: isInternal,
       }),
     });
+  }
+
+  async uploadTaskFileMultipart(taskId: string, file: File, isInternal = false): Promise<TaskFile> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('is_internal', String(isInternal));
+    return this.request<TaskFile>(`/tasks/${taskId}/files/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  resolveFileUrl(fileUrl: string): string {
+    if (fileUrl.startsWith('/')) {
+      return `${API_BASE}${fileUrl}`;
+    }
+    return fileUrl;
   }
 
   async updateFileApproval(fileId: string, approvalStatus: 'approved' | 'needs_changes'): Promise<{ id: string; approval_status: FileApprovalStatus }> {

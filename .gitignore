@@ -24,3 +24,7 @@ frontend/dist/
 .idea/
 *.log
 *.local
+
+# Uploads
+uploads/
+backend/uploads/

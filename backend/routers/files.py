@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Request, HTTPException, Depends
+import os
+import uuid
+import shutil
+from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File as FastAPIFile, Form
 from database import get_db
 from schemas import FileUploadRequest, FileApprovalRequest
 from deps import get_current_user, get_membership, require_task_access, parse_uuid
 from services.event_bus import dispatch_file_status_changed
+from config import get_settings
 
 router = APIRouter(tags=["Files & Approvals"])
 
@@ -59,6 +63,56 @@ async def upload_task_file(task_id: str, request: Request, payload: FileUploadRe
                 RETURNING *
                 """,
                 (agency_id, task_id, user_id, payload.file_name, payload.file_url, is_internal)
+            )
+            file_entry = cur.fetchone()
+            conn.commit()
+            return file_entry
+    finally:
+        conn.close()
+
+
+@router.post("/tasks/{task_id}/files/upload")
+async def upload_task_file_multipart(
+    task_id: str,
+    request: Request,
+    file: UploadFile = FastAPIFile(...),
+    is_internal: bool = Form(False),
+    user_id: str = Depends(get_current_user),
+):
+    agency_id = request.headers.get("x-agency-id")
+    if not agency_id:
+        raise HTTPException(status_code=400, detail="Missing X-Agency-ID header")
+
+    conn = get_db()
+    try:
+        membership = get_membership(conn, user_id, agency_id)
+        if membership["role"] == "client_user":
+            raise HTTPException(status_code=403, detail="Clients cannot upload files")
+
+        with conn.cursor() as cur:
+            task = require_task_access(cur, task_id, agency_id, membership)
+            file_internal = True if task["is_internal"] else is_internal
+
+            upload_dir = get_settings().UPLOAD_DIR
+            os.makedirs(upload_dir, exist_ok=True)
+
+            original_filename = file.filename or "uploaded_file"
+            file_ext = os.path.splitext(original_filename)[1]
+            stored_filename = f"{uuid.uuid4()}{file_ext}"
+            file_path = os.path.join(upload_dir, stored_filename)
+
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            file_url = f"/uploads/{stored_filename}"
+
+            cur.execute(
+                """
+                INSERT INTO task_files (agency_id, task_id, uploader_id, file_name, file_url, approval_status, is_internal)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                RETURNING *
+                """,
+                (agency_id, task_id, user_id, original_filename, file_url, file_internal),
             )
             file_entry = cur.fetchone()
             conn.commit()

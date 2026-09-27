@@ -24,6 +24,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
   const [files, setFiles] = useState<TaskFile[]>([]);
   const [newFileName, setNewFileName] = useState('');
   const [newFileUrl, setNewFileUrl] = useState('');
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [isInternalFile, setIsInternalFile] = useState(false);
   const [showAttachForm, setShowAttachForm] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -82,19 +83,29 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
   // Handle File Upload
   const handleAddFile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFileName.trim() || isUploadingFile) return;
+    if ((!newFileName.trim() && !selectedUploadFile) || isUploadingFile) return;
 
     try {
       setIsUploadingFile(true);
-      const added = await api.uploadTaskFile(
-        task.id,
-        newFileName.trim(),
-        newFileUrl.trim() || undefined,
-        !isClientUser && isInternalFile
-      );
+      let added: TaskFile;
+      if (selectedUploadFile) {
+        added = await api.uploadTaskFileMultipart(
+          task.id,
+          selectedUploadFile,
+          !isClientUser && isInternalFile
+        );
+      } else {
+        added = await api.uploadTaskFile(
+          task.id,
+          newFileName.trim(),
+          newFileUrl.trim() || undefined,
+          !isClientUser && isInternalFile
+        );
+      }
       setFiles((prev) => [added, ...prev]);
       setNewFileName('');
       setNewFileUrl('');
+      setSelectedUploadFile(null);
       setIsInternalFile(false);
       setShowAttachForm(false);
     } catch (err) {
@@ -333,7 +344,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
                   {showAttachForm && (
                     <form onSubmit={handleAddFile} style={{ background: '#fafbfc', border: '1px solid #dfe1e6', padding: 10, borderRadius: 3, marginBottom: 12 }}>
                       <div className="form-group">
-                        <label className="form-label">File Name</label>
+                        <label className="form-label">Upload File from Disk</label>
+                        <input
+                          type="file"
+                          className="form-input"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            setSelectedUploadFile(file);
+                            if (file && !newFileName) {
+                              setNewFileName(file.name);
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">File Display Name</label>
                         <input
                           type="text"
                           required
@@ -344,7 +369,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
                         />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">File URL (Optional)</label>
+                        <label className="form-label">Or External File URL (Optional)</label>
                         <input
                           type="url"
                           className="form-input"
@@ -369,7 +394,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAttachForm(false)}>
                           Cancel
                         </button>
-                        <button type="submit" className="btn btn-primary btn-sm" disabled={!newFileName.trim() || isUploadingFile}>
+                        <button type="submit" className="btn btn-primary btn-sm" disabled={(!newFileName.trim() && !selectedUploadFile) || isUploadingFile}>
                           Upload
                         </button>
                       </div>
@@ -387,7 +412,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
                         <div key={file.id} className="file-row">
                           <div>
                             <div>
-                              <a href={file.file_url} target="_blank" rel="noreferrer" className="file-name">
+                              <a href={api.resolveFileUrl(file.file_url)} target="_blank" rel="noreferrer" className="file-name">
                                 📎 {file.file_name}
                               </a>
                               {file.is_internal && (

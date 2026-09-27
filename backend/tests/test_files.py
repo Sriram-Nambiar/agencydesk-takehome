@@ -194,3 +194,56 @@ class TestFiles:
             headers=admin_acme_headers,
         )
         assert res.status_code == 400
+
+    def test_upload_file_multipart_success(self, client, member_acme_headers, sample_entities):
+        pub_task_id = sample_entities["public_task"]["id"]
+        file_content = b"%PDF-1.4 Mock Deliverable File Content"
+        files = {"file": ("mock_design_spec.pdf", file_content, "application/pdf")}
+        data = {"is_internal": "false"}
+
+        res = client.post(
+            f"/tasks/{pub_task_id}/files/upload",
+            files=files,
+            data=data,
+            headers=member_acme_headers,
+        )
+        assert res.status_code == 200
+        file_data = res.json()
+        assert file_data["file_name"] == "mock_design_spec.pdf"
+        assert file_data["file_url"].startswith("/uploads/")
+        assert file_data["is_internal"] is False
+        assert file_data["approval_status"] == "pending"
+
+        # Verify file is statically servable and content matches
+        download_res = client.get(file_data["file_url"])
+        assert download_res.status_code == 200
+        assert download_res.content == file_content
+
+    def test_upload_file_multipart_as_client_forbidden(
+        self, client, client_acme_headers, sample_entities
+    ):
+        pub_task_id = sample_entities["public_task"]["id"]
+        files = {"file": ("client_attempt.pdf", b"content", "application/pdf")}
+        res = client.post(
+            f"/tasks/{pub_task_id}/files/upload",
+            files=files,
+            headers=client_acme_headers,
+        )
+        assert res.status_code == 403
+        assert "Clients cannot upload files" in res.json().get("detail", "")
+
+    def test_upload_file_multipart_inherits_internal_status(
+        self, client, admin_acme_headers, sample_entities
+    ):
+        int_task_id = sample_entities["internal_task"]["id"]
+        files = {"file": ("internal_blueprint.pdf", b"internal blueprint bytes", "application/pdf")}
+        data = {"is_internal": "false"}  # Even if marked false, should inherit task's internal status
+
+        res = client.post(
+            f"/tasks/{int_task_id}/files/upload",
+            files=files,
+            data=data,
+            headers=admin_acme_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["is_internal"] is True

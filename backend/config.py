@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     AUTH_RATE_LIMIT_LOGIN: int = 60
     AUTH_RATE_LIMIT_REGISTER: int = 20
 
+    # Local File Uploads Directory
+    UPLOAD_DIR: str = "uploads"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
