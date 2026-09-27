@@ -6,24 +6,35 @@ import urllib.request
 import json
 
 BASE = os.getenv("API_URL", "http://localhost:8000")
+_client = None
+
+
+def _get_inprocess_client():
+    global _client
+    if _client is None:
+        sys.path.insert(0, os.path.dirname(__file__))
+        from main import app
+        from fastapi.testclient import TestClient
+        _client = TestClient(app)
+    return _client
 
 
 def request(path, email, password="password123", agency=None, method="GET", body=None):
-    login_req = urllib.request.Request(
-        BASE + "/auth/login", data=json.dumps({"email": email, "password": password}).encode(),
-        headers={"Content-Type": "application/json"}, method="POST"
-    )
-    with urllib.request.urlopen(login_req) as response:
-        token = json.loads(response.read())["token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    if agency:
-        headers["X-Agency-ID"] = agency
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req) as response:
+        login_req = urllib.request.Request(
+            BASE + "/auth/login", data=json.dumps({"email": email, "password": password}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(login_req, timeout=2.0) as response:
+            token = json.loads(response.read())["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        if agency:
+            headers["X-Agency-ID"] = agency
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=2.0) as response:
             return response.status, json.loads(response.read())
     except urllib.error.HTTPError as error:
         try:
@@ -31,6 +42,21 @@ def request(path, email, password="password123", agency=None, method="GET", body
         except Exception:
             payload = {}
         return error.code, payload
+    except urllib.error.URLError:
+        # Fall back to in-process TestClient when local server process is not actively bound
+        tc = _get_inprocess_client()
+        login_res = tc.post("/auth/login", json={"email": email, "password": password})
+        if login_res.status_code != 200:
+            return login_res.status_code, login_res.json()
+        token = login_res.json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        if agency:
+            headers["X-Agency-ID"] = agency
+        res = tc.request(method, path, headers=headers, json=body if body is not None else None)
+        try:
+            return res.status_code, res.json()
+        except Exception:
+            return res.status_code, {}
 
 
 def check(condition, message):

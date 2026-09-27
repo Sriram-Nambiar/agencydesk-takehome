@@ -55,11 +55,29 @@ CREATE TABLE projects (
 -- 6. PROJECT MEMBERS TABLE
 CREATE TABLE project_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_project_user UNIQUE (project_id, user_id)
+    CONSTRAINT unique_project_user UNIQUE (project_id, user_id),
+    CONSTRAINT pm_project_same_agency FOREIGN KEY (agency_id, project_id) REFERENCES projects(agency_id, id) ON DELETE CASCADE,
+    CONSTRAINT pm_user_same_agency FOREIGN KEY (user_id, agency_id) REFERENCES agency_memberships(user_id, agency_id) ON DELETE CASCADE
 );
+
+CREATE OR REPLACE FUNCTION set_project_member_agency_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.agency_id IS NULL THEN
+        SELECT agency_id INTO NEW.agency_id FROM projects WHERE id = NEW.project_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_set_pm_agency_id
+BEFORE INSERT ON project_members
+FOR EACH ROW
+EXECUTE FUNCTION set_project_member_agency_id();
 
 -- 7. TASKS TABLE
 CREATE TABLE tasks (

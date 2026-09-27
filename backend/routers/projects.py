@@ -67,7 +67,20 @@ async def get_agency_project(project_id: str, request: Request, user_id: str = D
             )
             tasks = cur.fetchall()
 
-            # Per-project stats summary
+            # Per-project dashboard: task counts by status & hours logged
+            cur.execute(
+                """
+                SELECT status, COUNT(*) as count
+                FROM tasks
+                WHERE project_id = %s AND agency_id = %s
+                GROUP BY status
+                """,
+                (project_id, agency_id)
+            )
+            task_counts_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
+            for s in ('todo', 'in_progress', 'review', 'done'):
+                task_counts_by_status.setdefault(s, 0)
+
             cur.execute(
                 """
                 SELECT COALESCE(SUM(duration_minutes), 0) as total_minutes
@@ -81,6 +94,7 @@ async def get_agency_project(project_id: str, request: Request, user_id: str = D
             return {
                 "project": project,
                 "tasks": tasks,
+                "task_counts_by_status": task_counts_by_status,
                 "total_hours_logged": round(time_summary["total_minutes"] / 60.0, 2)
             }
     finally:

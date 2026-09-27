@@ -28,3 +28,27 @@ ALTER TABLE agency_invites ADD CONSTRAINT invite_client_role
     CHECK ((role = 'client_user' AND client_id IS NOT NULL) OR (role <> 'client_user' AND client_id IS NULL));
 CREATE UNIQUE INDEX unique_pending_agency_invite_email
     ON agency_invites (agency_id, lower(email)) WHERE status = 'pending';
+
+-- PROJECT MEMBERS ISOLATION CONSTRAINTS
+ALTER TABLE project_members ADD COLUMN IF NOT EXISTS agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE;
+UPDATE project_members pm SET agency_id = p.agency_id FROM projects p WHERE pm.project_id = p.id AND pm.agency_id IS NULL;
+CREATE OR REPLACE FUNCTION set_project_member_agency_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.agency_id IS NULL THEN
+        SELECT agency_id INTO NEW.agency_id FROM projects WHERE id = NEW.project_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_set_pm_agency_id ON project_members;
+CREATE TRIGGER trg_set_pm_agency_id
+BEFORE INSERT ON project_members
+FOR EACH ROW
+EXECUTE FUNCTION set_project_member_agency_id();
+ALTER TABLE project_members DROP CONSTRAINT IF EXISTS pm_project_same_agency;
+ALTER TABLE project_members ADD CONSTRAINT pm_project_same_agency
+    FOREIGN KEY (agency_id, project_id) REFERENCES projects(agency_id, id) ON DELETE CASCADE;
+ALTER TABLE project_members DROP CONSTRAINT IF EXISTS pm_user_same_agency;
+ALTER TABLE project_members ADD CONSTRAINT pm_user_same_agency
+    FOREIGN KEY (user_id, agency_id) REFERENCES agency_memberships(user_id, agency_id) ON DELETE CASCADE;

@@ -50,14 +50,15 @@ async def upload_task_file(task_id: str, request: Request, payload: FileUploadRe
             raise HTTPException(status_code=403, detail="Clients cannot upload files")
 
         with conn.cursor() as cur:
-            require_task_access(cur, task_id, agency_id, membership)
+            task = require_task_access(cur, task_id, agency_id, membership)
+            is_internal = True if task["is_internal"] else payload.is_internal
             cur.execute(
                 """
                 INSERT INTO task_files (agency_id, task_id, uploader_id, file_name, file_url, approval_status, is_internal)
                 VALUES (%s, %s, %s, %s, %s, 'pending', %s)
                 RETURNING *
                 """,
-                (agency_id, task_id, user_id, payload.file_name, payload.file_url, payload.is_internal)
+                (agency_id, task_id, user_id, payload.file_name, payload.file_url, is_internal)
             )
             file_entry = cur.fetchone()
             conn.commit()

@@ -44,11 +44,13 @@ async def add_comment(task_id: str, request: Request, payload: CommentCreateRequ
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
-        # Force client comments to always be public
-        is_internal = False if membership["role"] == "client_user" else payload.is_internal
-
         with conn.cursor() as cur:
-            require_task_access(cur, task_id, agency_id, membership)
+            task = require_task_access(cur, task_id, agency_id, membership)
+            if membership["role"] == "client_user":
+                is_internal = False
+            else:
+                is_internal = True if task["is_internal"] else payload.is_internal
+
             cur.execute(
                 """
                 INSERT INTO task_comments (agency_id, task_id, author_id, content, is_internal)

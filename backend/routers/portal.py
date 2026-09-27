@@ -73,9 +73,24 @@ async def get_client_project(project_id: str, request: Request, user_id: str = D
             )
             client_tasks = cur.fetchall()
 
+            # Client dashboard: task counts strictly scoped to public client-visible deliverables
+            cur.execute(
+                """
+                SELECT status, COUNT(*) as count
+                FROM tasks
+                WHERE project_id = %s AND agency_id = %s AND is_internal = FALSE
+                GROUP BY status
+                """,
+                (project_id, agency_id)
+            )
+            task_counts_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
+            for s in ('todo', 'in_progress', 'review', 'done'):
+                task_counts_by_status.setdefault(s, 0)
+
             return {
                 "project": project,
-                "tasks": client_tasks
+                "tasks": client_tasks,
+                "task_counts_by_status": task_counts_by_status
             }
     finally:
         conn.close()
