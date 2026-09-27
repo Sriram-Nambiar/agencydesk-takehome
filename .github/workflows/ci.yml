@@ -90,6 +90,8 @@ jobs:
       - name: Run Component Unit Tests
         run: npm test
 
+      - name: Run ESLint
+        run: npm run lint
+
       - name: Typecheck and Build Production Bundle
         run: npm run build
-

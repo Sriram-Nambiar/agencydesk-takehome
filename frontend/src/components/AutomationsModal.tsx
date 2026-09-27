@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../api';
 import type { AutomationRule } from '../types';
 
@@ -17,13 +17,7 @@ export const AutomationsModal: React.FC<AutomationsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadAutomations();
-    }
-  }, [isOpen]);
-
-  const loadAutomations = async () => {
+  const loadAutomations = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.getAutomations();
@@ -33,7 +27,15 @@ export const AutomationsModal: React.FC<AutomationsModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Opening the modal synchronizes it with the agency's saved rules.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadAutomations();
+    }
+  }, [isOpen, loadAutomations]);
 
   const handleToggle = async (rule: AutomationRule) => {
     if (!isAdmin) return;
@@ -71,7 +73,7 @@ export const AutomationsModal: React.FC<AutomationsModalProps> = ({
 
   const formatAction = (rule: AutomationRule) => {
     if (rule.action_type === 'update_task_status') {
-      const target = rule.action_config?.target_status || 'in_progress';
+      const target = rule.action_config?.target_status ?? 'in_progress';
       return `Auto-update task status to "${target}"`;
     }
     if (rule.action_type === 'notify_assignee') {

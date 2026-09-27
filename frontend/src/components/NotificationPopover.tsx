@@ -33,6 +33,8 @@ export const NotificationPopover: React.FC = () => {
 
   // Poll for notifications periodically
   useEffect(() => {
+    // Start the initial poll as part of subscribing to the notification feed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCount();
     const interval = setInterval(fetchCount, 15000);
     return () => clearInterval(interval);

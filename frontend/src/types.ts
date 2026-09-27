@@ -112,7 +112,7 @@ export interface AutomationRule {
   name: string;
   trigger_event: string;
   action_type: string;
-  action_config: Record<string, any>;
+  action_config: { target_status?: TaskStatus } & Record<string, unknown>;
   is_enabled: boolean;
   created_at: string;
 }

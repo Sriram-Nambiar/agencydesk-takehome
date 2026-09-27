@@ -2,25 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Header } from '../components/Header';
 import { NotificationPopover } from '../components/NotificationPopover';
-import { AutomationsModal } from '../components/AutomationsModal';
 import * as AuthContextModule from '../context/AuthContext';
 import { api } from '../api';
 
 describe('Notifications and Automations Frontend Components', () => {
-  const baseAuthMock = {
-    token: 'fake-jwt',
+  type AuthValue = ReturnType<typeof AuthContextModule.useAuth>;
+  const baseAuthMock: AuthValue = {
     user: { id: 'u1', email: 'alex@example.com', full_name: 'Alex Rivera' },
     memberships: [
       { agency_id: 'a1', agency_name: 'Acme Digital Agency', role: 'agency_admin', client_id: null },
     ],
     activeAgency: { agency_id: 'a1', agency_name: 'Acme Digital Agency', role: 'agency_admin', client_id: null },
     activeRole: 'agency_admin' as const,
-    activeClientId: null,
     isClientUser: false,
+    isLoading: false,
+    error: null,
     switchAgency: vi.fn(),
-    login: vi.fn(),
+    login: vi.fn<AuthValue['login']>(),
+    register: vi.fn<AuthValue['register']>(),
     logout: vi.fn(),
-    quickLogin: vi.fn(),
+    quickLogin: vi.fn<AuthValue['quickLogin']>(),
+    refreshAuth: vi.fn<AuthValue['refreshAuth']>(),
   };
 
   beforeEach(() => {
@@ -69,7 +71,7 @@ describe('Notifications and Automations Frontend Components', () => {
       ...baseAuthMock,
       activeRole: 'client_user',
       isClientUser: true,
-    } as any);
+    });
 
     render(<Header />);
 
@@ -78,7 +80,7 @@ describe('Notifications and Automations Frontend Components', () => {
   });
 
   it('renders Automations button for agency staff and opens modal', async () => {
-    vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue(baseAuthMock as any);
+    vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue(baseAuthMock);
     vi.spyOn(api, 'getAutomations').mockResolvedValue([
       {
         id: 'auto-1',

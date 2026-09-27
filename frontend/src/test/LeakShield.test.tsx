@@ -3,9 +3,29 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ProjectOverview } from '../components/ProjectOverview';
 import { TaskBoard } from '../components/TaskBoard';
 import * as AuthContextModule from '../context/AuthContext';
-import type { Project, Task } from '../types';
+import type { Project, Task, UserRole } from '../types';
 
 describe('Frontend Leak Shield & Role Boundary Controls', () => {
+  type AuthValue = ReturnType<typeof AuthContextModule.useAuth>;
+  const makeAuthMock = (
+    isClientUser: boolean,
+    activeRole: UserRole,
+  ): AuthValue => ({
+    user: null,
+    memberships: [],
+    activeAgency: null,
+    activeRole,
+    isClientUser,
+    isLoading: false,
+    error: null,
+    login: vi.fn<AuthValue['login']>(),
+    register: vi.fn<AuthValue['register']>(),
+    logout: vi.fn(),
+    switchAgency: vi.fn<AuthValue['switchAgency']>(),
+    quickLogin: vi.fn<AuthValue['quickLogin']>(),
+    refreshAuth: vi.fn<AuthValue['refreshAuth']>(),
+  });
+
   const sampleProject: Project = {
     id: 'proj-1',
     agency_id: 'agency-1',
@@ -49,9 +69,8 @@ describe('Frontend Leak Shield & Role Boundary Controls', () => {
 
   it('ProjectOverview displays staff controls (Add Task, Logged Time) when logged in as agency staff', () => {
     vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
-      isClientUser: false,
-      activeRole: 'agency_admin',
-    } as any);
+      ...makeAuthMock(false, 'agency_admin'),
+    });
 
     render(
       <ProjectOverview
@@ -86,9 +105,8 @@ describe('Frontend Leak Shield & Role Boundary Controls', () => {
 
   it('ProjectOverview strictly shields and hides staff controls when logged in as client user', () => {
     vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
-      isClientUser: true,
-      activeRole: 'client_user',
-    } as any);
+      ...makeAuthMock(true, 'client_user'),
+    });
 
     render(
       <ProjectOverview
@@ -124,8 +142,8 @@ describe('Frontend Leak Shield & Role Boundary Controls', () => {
   it('TaskBoard renders move status button for staff and triggers status update', () => {
     const mockUpdateStatus = vi.fn();
     vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
-      isClientUser: false,
-    } as any);
+      ...makeAuthMock(false, 'agency_member'),
+    });
 
     render(
       <TaskBoard
@@ -148,8 +166,8 @@ describe('Frontend Leak Shield & Role Boundary Controls', () => {
 
   it('TaskBoard hides status transition controls for client users', () => {
     vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
-      isClientUser: true,
-    } as any);
+      ...makeAuthMock(true, 'client_user'),
+    });
 
     render(
       <TaskBoard

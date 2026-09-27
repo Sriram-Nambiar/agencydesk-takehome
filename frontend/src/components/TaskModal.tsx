@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Task, TaskStatus, TaskComment, TaskFile, TimeEntry } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
@@ -38,7 +38,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
   // Loading state
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoadingData(true);
     try {
       const promises: [Promise<TaskComment[]>, Promise<TaskFile[]>, Promise<TimeEntry[]> | Promise<never[]>] = [
@@ -56,11 +56,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [task.id, isClientUser]);
 
   useEffect(() => {
+    // Load the selected task's related records when the modal context changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
-  }, [task.id, isClientUser]);
+  }, [loadData]);
 
   // Handle Comment Submission
   const handleAddComment = async (e: React.FormEvent) => {

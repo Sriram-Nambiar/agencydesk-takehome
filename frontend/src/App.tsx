@@ -69,6 +69,8 @@ const WorkspaceDashboard: React.FC = () => {
   }, [activeAgency, isClientUser]);
 
   useEffect(() => {
+    // Fetching projects synchronizes this screen with the selected tenant.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProjects();
   }, [loadProjects]);
 
@@ -97,6 +99,8 @@ const WorkspaceDashboard: React.FC = () => {
   }, [selectedProject, isClientUser]);
 
   useEffect(() => {
+    // Fetching tasks synchronizes this screen with the selected project.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTasks();
   }, [loadTasks]);
 
