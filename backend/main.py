@@ -1,5 +1,7 @@
 import os
 import uuid
+import logging
+from time import perf_counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
@@ -7,6 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("agencydesk.access")
 
 from database import get_db, get_connection_pool, close_connection_pool
 from redis_client import get_redis_pool, close_redis_pool, ping_redis
@@ -28,7 +36,7 @@ from routers import (
     tasks,
     comments,
     files,
-    time,
+    time as time_router,
     agency,
     notifications,
     automations,
@@ -68,14 +76,31 @@ app.add_middleware(
 async def security_and_tracing_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request.state.request_id = request_id
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    return response
+    start_time = perf_counter()
+    try:
+        response = await call_next(request)
+        process_time_ms = (perf_counter() - start_time) * 1000
+        client_ip = request.client.host if request.client else "unknown"
+        logger.info(
+            f"request_id={request_id} method={request.method} path={request.url.path} "
+            f"status={response.status_code} latency_ms={process_time_ms:.2f} client_ip={client_ip}"
+        )
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time"] = f"{process_time_ms:.2f}ms"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+    except Exception as exc:
+        process_time_ms = (perf_counter() - start_time) * 1000
+        client_ip = request.client.host if request.client else "unknown"
+        logger.error(
+            f"request_id={request_id} method={request.method} path={request.url.path} "
+            f"status=500 latency_ms={process_time_ms:.2f} client_ip={client_ip} error={exc}"
+        )
+        raise exc
 
 
 @app.exception_handler(RequestValidationError)
@@ -122,7 +147,7 @@ app.include_router(portal.router)
 app.include_router(tasks.router)
 app.include_router(comments.router)
 app.include_router(files.router)
-app.include_router(time.router)
+app.include_router(time_router.router)
 app.include_router(agency.router)
 app.include_router(notifications.router)
 app.include_router(automations.router)

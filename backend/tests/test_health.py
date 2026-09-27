@@ -38,3 +38,24 @@ class TestHealthAndObservability:
         custom_id = "trace-req-client-998877"
         res2 = client.get("/healthz", headers={"X-Request-ID": custom_id})
         assert res2.headers.get("X-Request-ID") == custom_id
+
+    def test_process_time_header_and_structured_latency_logging(self, client, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            res = client.get("/healthz", headers={"X-Request-ID": "test-latency-123"})
+            assert res.status_code == 200
+            assert "X-Process-Time" in res.headers
+            process_time = res.headers["X-Process-Time"]
+            assert process_time.endswith("ms")
+            latency_val = float(process_time[:-2])
+            assert latency_val >= 0.0
+
+            # Verify structured log output was generated
+            log_messages = [rec.message for rec in caplog.records if "test-latency-123" in rec.message]
+            assert len(log_messages) >= 1
+            log_msg = log_messages[0]
+            assert "request_id=test-latency-123" in log_msg
+            assert "method=GET" in log_msg
+            assert "path=/healthz" in log_msg
+            assert "status=200" in log_msg
+            assert "latency_ms=" in log_msg
