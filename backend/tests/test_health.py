@@ -15,6 +15,7 @@ class TestHealthAndObservability:
         data = res.json()
         assert data["status"] == "ready"
         assert data["database"] == "connected"
+        assert data["redis"] in ("connected", "unreachable")
 
     def test_security_headers_present_on_responses(self, client):
         res = client.get("/healthz")

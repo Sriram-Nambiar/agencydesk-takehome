@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from database import get_db, get_connection_pool, close_connection_pool
+from redis_client import get_redis_pool, close_redis_pool, ping_redis
 from deps import (
     get_current_user,
     get_membership,
@@ -36,11 +37,13 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize connection pool on startup
+    # Initialize connection pools on startup
     get_connection_pool()
+    get_redis_pool()
     yield
-    # Gracefully drain and close connection pool on shutdown
+    # Gracefully drain and close connection pools on shutdown
     close_connection_pool()
+    close_redis_pool()
 
 
 app = FastAPI(
@@ -90,16 +93,24 @@ def liveness_probe():
 
 @app.get("/readyz", tags=["Health"])
 def readiness_probe():
-    """Readiness probe: validates live PostgreSQL database connection."""
+    """Readiness probe: validates live PostgreSQL and Redis connections."""
+    db_status = "error"
+    redis_status = "connected" if ping_redis() else "unreachable"
     try:
         conn = get_db()
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
             cur.fetchone()
         conn.close()
-        return {"status": "ready", "database": "connected"}
+        db_status = "connected"
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Database connection failed: {exc}")
+
+    return {
+        "status": "ready",
+        "database": db_status,
+        "redis": redis_status,
+    }
 
 
 # Include modular routers
