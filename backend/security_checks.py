@@ -7,6 +7,19 @@ import json
 
 BASE = os.getenv("API_URL", "http://localhost:8000")
 _client = None
+_use_testclient = None
+
+
+def _should_use_testclient():
+    global _use_testclient
+    if _use_testclient is None:
+        try:
+            req = urllib.request.Request(BASE + "/healthz", method="GET")
+            with urllib.request.urlopen(req, timeout=0.3):
+                _use_testclient = False
+        except Exception:
+            _use_testclient = True
+    return _use_testclient
 
 
 def _get_inprocess_client():
@@ -20,6 +33,21 @@ def _get_inprocess_client():
 
 
 def request(path, email, password="password123", agency=None, method="GET", body=None):
+    if _should_use_testclient():
+        tc = _get_inprocess_client()
+        login_res = tc.post("/auth/login", json={"email": email, "password": password})
+        if login_res.status_code != 200:
+            return login_res.status_code, login_res.json()
+        token = login_res.json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        if agency:
+            headers["X-Agency-ID"] = agency
+        res = tc.request(method, path, headers=headers, json=body if body is not None else None)
+        try:
+            return res.status_code, res.json()
+        except Exception:
+            return res.status_code, {}
+
     try:
         login_req = urllib.request.Request(
             BASE + "/auth/login", data=json.dumps({"email": email, "password": password}).encode(),
