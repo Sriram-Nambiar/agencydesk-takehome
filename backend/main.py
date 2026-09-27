@@ -3,7 +3,9 @@ import secrets
 import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, Depends
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from jose import jwt, JWTError
@@ -11,6 +13,19 @@ from datetime import datetime, date, timedelta
 from uuid import UUID
 import uuid
 from dotenv import load_dotenv
+
+from schemas import (
+    RegisterRequest,
+    LoginRequest,
+    TaskCreateRequest,
+    TaskStatusUpdateRequest,
+    CommentCreateRequest,
+    FileUploadRequest,
+    FileApprovalRequest,
+    TimeLogRequest,
+    InviteCreateRequest,
+    InviteAcceptRequest,
+)
 
 load_dotenv()
 
@@ -64,6 +79,15 @@ async def security_and_tracing_middleware(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    first_error = exc.errors()[0] if exc.errors() else {}
+    msg = str(first_error.get("msg", "Validation error"))
+    if msg.startswith("Value error, "):
+        msg = msg[len("Value error, "):]
+    return JSONResponse(status_code=400, content={"detail": msg})
 
 
 @app.get("/healthz", tags=["Health"])
@@ -171,37 +195,25 @@ def parse_optional_date(value, field_name):
 # -------------------------------------------------------------------
 
 @app.post("/auth/register")
-async def register(request: Request):
-    data = await request.json()
-    raw_email = data.get("email")
-    email = raw_email.strip().lower() if isinstance(raw_email, str) else ""
-    password = data.get("password")
-    full_name = data.get("full_name")
-    agency_name = data.get("agency_name")
-
-    if not email or len(email) > 320 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or not isinstance(password, str) or len(password) < 8 or len(password) > 72 or not (full_name or "").strip() or not (agency_name or "").strip():
-        raise HTTPException(status_code=400, detail="Missing required fields")
-    full_name = full_name.strip()
-    agency_name = agency_name.strip()
-
+async def register(payload: RegisterRequest):
     conn = get_db()
     try:
         with conn.cursor() as cur:
             # Check user exists
-            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            cur.execute("SELECT id FROM users WHERE email = %s", (payload.email,))
             if cur.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
 
             # Create User
-            hashed_pw = pwd_context.hash(password)
+            hashed_pw = pwd_context.hash(payload.password)
             cur.execute(
                 "INSERT INTO users (email, password_hash, full_name) VALUES (%s, %s, %s) RETURNING id",
-                (email, hashed_pw, full_name)
+                (payload.email, hashed_pw, payload.full_name)
             )
             user_id = cur.fetchone()["id"]
 
             # Create Agency
-            cur.execute("INSERT INTO agencies (name) VALUES (%s) RETURNING id", (agency_name,))
+            cur.execute("INSERT INTO agencies (name) VALUES (%s) RETURNING id", (payload.agency_name,))
             agency_id = cur.fetchone()["id"]
 
             # Create Membership as Admin
@@ -218,20 +230,13 @@ async def register(request: Request):
 
 
 @app.post("/auth/login")
-async def login(request: Request):
-    data = await request.json()
-    raw_email = data.get("email")
-    email = raw_email.strip().lower() if isinstance(raw_email, str) else ""
-    password = data.get("password")
-    if not email or not isinstance(password, str):
-        raise HTTPException(status_code=400, detail="Email and password are required")
-
+async def login(payload: LoginRequest):
     conn = get_db()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, password_hash FROM users WHERE email = %s", (email,))
+            cur.execute("SELECT id, password_hash FROM users WHERE email = %s", (payload.email,))
             user = cur.fetchone()
-            if not user or not pwd_context.verify(password, user["password_hash"]):
+            if not user or not pwd_context.verify(payload.password, user["password_hash"]):
                 raise HTTPException(status_code=401, detail="Invalid credentials")
 
             token = jwt.encode({"sub": str(user["id"]), "exp": datetime.utcnow() + timedelta(days=7)}, SECRET_KEY, algorithm=ALGORITHM)
@@ -450,11 +455,8 @@ async def get_client_project(project_id: str, request: Request):
 # -------------------------------------------------------------------
 
 @app.post("/tasks")
-async def create_task(request: Request):
-    user_id = get_current_user(request)
+async def create_task(request: Request, payload: TaskCreateRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
@@ -462,19 +464,8 @@ async def create_task(request: Request):
             raise HTTPException(status_code=403, detail="Client users cannot create tasks")
 
         with conn.cursor() as cur:
-            project = require_project_access(cur, data.get("project_id"), agency_id, membership)
-            raw_title = data.get("title")
-            title = raw_title.strip() if isinstance(raw_title, str) else ""
-            if not title or len(title) > 240:
-                raise HTTPException(status_code=400, detail="Task title is required and must be under 240 characters")
-            if not isinstance(data.get("status", "todo"), str) or data.get("status", "todo") not in {"todo", "in_progress", "review", "done"}:
-                raise HTTPException(status_code=400, detail="Invalid task status")
-            if not isinstance(data.get("priority", "medium"), str) or data.get("priority", "medium") not in {"low", "medium", "high", "urgent"}:
-                raise HTTPException(status_code=400, detail="Invalid task priority")
-            assignee_id = data.get("assignee_id")
-            if assignee_id:
-                assignee_id = parse_uuid(assignee_id, "Assignee ID")
-            due_date = parse_optional_date(data.get("due_date"), "Due date")
+            project = require_project_access(cur, payload.project_id, agency_id, membership)
+            assignee_id = str(payload.assignee_id) if payload.assignee_id else None
             if assignee_id:
                 cur.execute("SELECT 1 FROM agency_memberships WHERE user_id=%s AND agency_id=%s AND role IN ('agency_admin','agency_member') AND removed_at IS NULL", (assignee_id, agency_id))
                 if not cur.fetchone():
@@ -486,9 +477,6 @@ async def create_task(request: Request):
                     cur.execute("INSERT INTO project_members (project_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (project["id"], assignee_id))
                 if membership["role"] == "agency_member" and assignee_id != user_id:
                     raise HTTPException(status_code=403, detail="Members may only assign tasks to themselves")
-            is_internal = data.get("is_internal", False)
-            if not isinstance(is_internal, bool):
-                raise HTTPException(status_code=400, detail="is_internal must be true or false")
             cur.execute(
                 """
                 INSERT INTO tasks (agency_id, project_id, title, status, priority, assignee_id, due_date, is_internal)
@@ -498,12 +486,12 @@ async def create_task(request: Request):
                 (
                     agency_id,
                     project["id"],
-                    title,
-                    data.get("status", "todo"),
-                    data.get("priority", "medium"),
+                    payload.title,
+                    payload.status,
+                    payload.priority,
                     assignee_id,
-                    due_date,
-                    is_internal
+                    payload.due_date,
+                    payload.is_internal
                 )
             )
             task = cur.fetchone()
@@ -514,14 +502,8 @@ async def create_task(request: Request):
 
 
 @app.patch("/tasks/{task_id}/status")
-async def update_task_status(task_id: str, request: Request):
-    user_id = get_current_user(request)
+async def update_task_status(task_id: str, request: Request, payload: TaskStatusUpdateRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-    new_status = data.get("status")
-    if not isinstance(new_status, str) or new_status not in {"todo", "in_progress", "review", "done"}:
-        raise HTTPException(status_code=400, detail="Invalid task status")
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
@@ -532,7 +514,7 @@ async def update_task_status(task_id: str, request: Request):
             require_task_access(cur, task_id, agency_id, membership)
             cur.execute(
                 "UPDATE tasks SET status = %s WHERE id = %s AND agency_id = %s RETURNING id, status",
-                (new_status, task_id, agency_id)
+                (payload.status, task_id, agency_id)
             )
             updated = cur.fetchone()
             if not updated:
@@ -582,25 +564,13 @@ async def get_comments(task_id: str, request: Request):
 
 
 @app.post("/tasks/{task_id}/comments")
-async def add_comment(task_id: str, request: Request):
-    user_id = get_current_user(request)
+async def add_comment(task_id: str, request: Request, payload: CommentCreateRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
-        raw_content = data.get("content")
-        content = raw_content.strip() if isinstance(raw_content, str) else ""
-        if not content or len(content) > 5000:
-            raise HTTPException(status_code=400, detail="Comment must contain 1 to 5000 characters")
-        is_internal = data.get("is_internal", False)
-        if not isinstance(is_internal, bool):
-            raise HTTPException(status_code=400, detail="is_internal must be true or false")
-
         # Force client comments to always be public
-        if membership["role"] == "client_user":
-            is_internal = False
+        is_internal = False if membership["role"] == "client_user" else payload.is_internal
 
         with conn.cursor() as cur:
             require_task_access(cur, task_id, agency_id, membership)
@@ -610,7 +580,7 @@ async def add_comment(task_id: str, request: Request):
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (agency_id, task_id, user_id, content, is_internal)
+                (agency_id, task_id, user_id, payload.content, is_internal)
             )
             comment = cur.fetchone()
             conn.commit()
@@ -620,24 +590,16 @@ async def add_comment(task_id: str, request: Request):
 
 
 @app.post("/tasks/{task_id}/time")
-async def log_time(task_id: str, request: Request):
-    user_id = get_current_user(request)
+async def log_time(task_id: str, request: Request, payload: TimeLogRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
         if membership["role"] == "client_user":
             raise HTTPException(status_code=403, detail="Client users cannot log time")
 
-        duration = data.get("duration_minutes")
-        if not isinstance(duration, int) or isinstance(duration, bool) or not 1 <= duration <= 1440:
-            raise HTTPException(status_code=400, detail="Duration must be a whole number from 1 to 1440 minutes")
-        entry_date = parse_optional_date(data.get("entry_date"), "Entry date") or datetime.utcnow().date()
-        note = data.get("note") or ""
-        if not isinstance(note, str):
-            raise HTTPException(status_code=400, detail="Note must be text")
+        entry_date = payload.entry_date or datetime.utcnow().date()
+        note = (payload.note or "")[:1000]
         with conn.cursor() as cur:
             require_task_access(cur, task_id, agency_id, membership)
             cur.execute(
@@ -646,7 +608,7 @@ async def log_time(task_id: str, request: Request):
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (agency_id, task_id, user_id, duration, note[:1000], entry_date)
+                (agency_id, task_id, user_id, payload.duration_minutes, note, entry_date)
             )
             entry = cur.fetchone()
             conn.commit()
@@ -656,15 +618,8 @@ async def log_time(task_id: str, request: Request):
 
 
 @app.patch("/files/{file_id}/approval")
-async def update_file_approval(file_id: str, request: Request):
-    user_id = get_current_user(request)
+async def update_file_approval(file_id: str, request: Request, payload: FileApprovalRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-    status_choice = data.get("approval_status")
-
-    if status_choice not in ["approved", "needs_changes"]:
-        raise HTTPException(status_code=400, detail="Status must be approved or needs_changes")
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
@@ -684,7 +639,7 @@ async def update_file_approval(file_id: str, request: Request):
                 WHERE id = %s AND agency_id = %s AND is_internal = FALSE
                 RETURNING id, approval_status
                 """,
-                (status_choice, file_id, agency_id)
+                (payload.approval_status, file_id, agency_id)
             )
             updated = cur.fetchone()
             if not updated:
@@ -730,26 +685,13 @@ async def get_task_files(task_id: str, request: Request):
 
 
 @app.post("/tasks/{task_id}/files")
-async def upload_task_file(task_id: str, request: Request):
-    user_id = get_current_user(request)
+async def upload_task_file(task_id: str, request: Request, payload: FileUploadRequest, user_id: str = Depends(get_current_user)):
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-
     conn = get_db()
     try:
         membership = get_membership(conn, user_id, agency_id)
         if membership["role"] == "client_user":
             raise HTTPException(status_code=403, detail="Clients cannot upload files")
-        requested_internal = data.get("is_internal", False)
-        if not isinstance(requested_internal, bool):
-            raise HTTPException(status_code=400, detail="is_internal must be true or false")
-        is_internal = requested_internal
-
-        raw_file_name, raw_file_url = data.get("file_name"), data.get("file_url")
-        file_name = raw_file_name.strip() if isinstance(raw_file_name, str) else ""
-        file_url = raw_file_url.strip() if isinstance(raw_file_url, str) else ""
-        if not file_name or len(file_name) > 255 or not file_url or len(file_url) > 2000 or not file_url.startswith(("https://", "http://")):
-            raise HTTPException(status_code=400, detail="Provide a valid file name and http(s) URL")
 
         with conn.cursor() as cur:
             require_task_access(cur, task_id, agency_id, membership)
@@ -759,7 +701,7 @@ async def upload_task_file(task_id: str, request: Request):
                 VALUES (%s, %s, %s, %s, %s, 'pending', %s)
                 RETURNING *
                 """,
-                (agency_id, task_id, user_id, file_name, file_url, is_internal)
+                (agency_id, task_id, user_id, payload.file_name, payload.file_url, payload.is_internal)
             )
             file_entry = cur.fetchone()
             conn.commit()
@@ -897,17 +839,11 @@ async def add_project_member(project_id: str, member_id: str, request: Request):
 
 
 @app.post("/agency/invites")
-async def create_or_resend_invite(request: Request):
+async def create_or_resend_invite(request: Request, payload: InviteCreateRequest, user_id: str = Depends(get_current_user)):
     """Create or safely resend a pending invite; only agency admins may invite."""
-    user_id = get_current_user(request)
     agency_id = request.headers.get("x-agency-id")
-    data = await request.json()
-    email = (data.get("email") or "").strip().lower()
-    role = data.get("role")
-    client_id = data.get("client_id")
-    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or not isinstance(role, str) or role not in {"agency_admin", "agency_member", "client_user"}:
-        raise HTTPException(status_code=400, detail="Provide a valid email and role")
-    if (role == "client_user") != bool(client_id):
+    client_id = str(payload.client_id) if payload.client_id else None
+    if (payload.role == "client_user") != bool(client_id):
         raise HTTPException(status_code=400, detail="Client invites require a client; staff invites must not include one")
     conn = get_db()
     try:
@@ -927,7 +863,7 @@ async def create_or_resend_invite(request: Request):
                    DO UPDATE SET role=EXCLUDED.role, client_id=EXCLUDED.client_id, token=EXCLUDED.token,
                                  expires_at=EXCLUDED.expires_at, created_at=NOW()
                    RETURNING id, agency_id, email, role, client_id, token, expires_at""",
-                (agency_id, email, role, client_id, token),
+                (agency_id, payload.email, payload.role, client_id, token),
             )
             invite = cur.fetchone()
             conn.commit()
@@ -937,18 +873,12 @@ async def create_or_resend_invite(request: Request):
 
 
 @app.post("/invites/accept")
-async def accept_invite(request: Request):
+async def accept_invite(payload: InviteAcceptRequest):
     """Accept invite once, reusing a global identity when the email already exists."""
-    data = await request.json()
-    token = data.get("token")
-    password = data.get("password")
-    full_name = (data.get("full_name") or "").strip()
-    if not isinstance(token, str) or not token or not isinstance(password, str):
-        raise HTTPException(status_code=400, detail="Invite token and password are required")
     conn = get_db()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM agency_invites WHERE token=%s FOR UPDATE", (token,))
+            cur.execute("SELECT * FROM agency_invites WHERE token=%s FOR UPDATE", (payload.token,))
             invite = cur.fetchone()
             if not invite:
                 raise HTTPException(status_code=404, detail="Invite not found")
@@ -957,13 +887,14 @@ async def accept_invite(request: Request):
             cur.execute("SELECT id, password_hash FROM users WHERE lower(email)=lower(%s)", (invite["email"],))
             user = cur.fetchone()
             if user:
-                if not pwd_context.verify(password, user["password_hash"]):
+                if not pwd_context.verify(payload.password, user["password_hash"]):
                     raise HTTPException(status_code=401, detail="Sign in with the existing account password to accept")
                 user_id = user["id"]
             else:
-                if len(password) < 8 or len(password) > 72 or not full_name:
+                full_name = (payload.full_name or "").strip()
+                if len(payload.password) < 8 or len(payload.password) > 72 or not full_name:
                     raise HTTPException(status_code=400, detail="New accounts need a name and a password of 8 to 72 characters")
-                cur.execute("INSERT INTO users (email, password_hash, full_name) VALUES (%s, %s, %s) RETURNING id", (invite["email"].lower(), pwd_context.hash(password), full_name))
+                cur.execute("INSERT INTO users (email, password_hash, full_name) VALUES (%s, %s, %s) RETURNING id", (invite["email"].lower(), pwd_context.hash(payload.password), full_name))
                 user_id = cur.fetchone()["id"]
             cur.execute("SELECT role, client_id, removed_at FROM agency_memberships WHERE user_id=%s AND agency_id=%s", (user_id, invite["agency_id"]))
             existing = cur.fetchone()
