@@ -2,21 +2,71 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
+      POSTGRES_DB: agencydesk
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: devpass
-      POSTGRES_DB: agencydesk
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agencydesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: agencydesk
+      DB_USER: postgres
+      DB_PASS: devpass
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SECRET_KEY: ${SECRET_KEY:-local-demo-secret-change-before-deploying}
+      CORS_ORIGINS: http://localhost:5173
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:
   redisdata:
+  uploads:

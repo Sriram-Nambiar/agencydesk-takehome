@@ -22,76 +22,57 @@
 
 ## Getting Started
 
-You can run AgencyDesk locally either **with Docker** (fastest, manages database and Redis for you) or **without Docker** (running services natively).
+You can run the complete app with Docker, or run its services natively.
 
 ### Prerequisites
 
 | Requirement | Version | Required For |
 | :--- | :--- | :--- |
-| **Node.js** | 20+ | Frontend development and testing |
-| **Python** | 3.10+ | Backend API, migrations, and test runner |
-| **Docker Desktop** | Latest | *Option 1 only* (PostgreSQL & Redis containers) |
-| **Local PostgreSQL** | 15+ | *Option 2 only* (Native database) |
-| **Local Redis** | 6+ | *Option 2 only* (Native event bus & caching) |
+| **Docker Desktop** | Latest | Complete app with one command |
+| **Node.js** | 20+ | Native frontend development and testing |
+| **Python** | 3.10+ | Native backend development and testing |
+| **Local PostgreSQL** | 15+ | Native database setup |
+| **Local Redis** | 6+ | Native cache and event setup |
 
 ---
 
-### Option 1: Starting with Docker (Recommended)
+### Start the complete app with Docker
 
-Docker Compose automatically spins up PostgreSQL (with schema pre-loaded) and Redis on standard ports.
-
-#### 1. Start Database & Redis Services
+From the repository root, run:
 
 ```bash
-docker compose up -d
-```
-*This starts:*
-- **PostgreSQL 16** on `localhost:5432` (database: `agencydesk`, user: `postgres`, password: `devpass`)
-- **Redis 7** on `localhost:6379`
-- Schema is automatically initialized from `backend/schema.sql` on first boot.
-
-#### 2. Start the Backend API
-
-In a new terminal:
-
-**Windows (PowerShell):**
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python seed.py
-python -m uvicorn main:app --reload --port 8000
+docker compose up --build
 ```
 
-**macOS / Linux (Bash):**
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python seed.py
-python -m uvicorn main:app --reload --port 8000
-```
+This builds and starts the React frontend, FastAPI backend, PostgreSQL, and Redis. On the first start, PostgreSQL loads `backend/schema.sql` and the backend adds the demo data automatically.
 
-#### 3. Start the Frontend App
+Open **http://localhost:5173**. The API is available at **http://localhost:8000**, including interactive docs at **http://localhost:8000/docs**.
 
-In another terminal:
+To run the stack in the background, append `-d`:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+docker compose up --build -d
 ```
 
-Open **http://localhost:5173** in your browser.
+To stop it:
 
-> [!TIP]
-> **Need a clean slate?** Run `docker compose down -v && docker compose up -d` to clear database volumes, then rerun `python backend/seed.py`.
+```bash
+docker compose down
+```
+
+To reset all local Docker data and recreate the demo data, run:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+> [!NOTE]
+> `docker compose up` preserves existing database and upload volumes. The demo seed runs only when the database is empty.
 
 ---
 
-### Option 2: Starting without Docker (Native Local Services)
+### Starting without Docker
 
 Use this option if you prefer running native PostgreSQL and Redis installations on your host machine.
 
