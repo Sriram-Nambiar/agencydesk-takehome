@@ -30,6 +30,8 @@ from routers import (
     files,
     time,
     agency,
+    notifications,
+    automations,
 )
 
 load_dotenv()
@@ -122,3 +124,5 @@ app.include_router(comments.router)
 app.include_router(files.router)
 app.include_router(time.router)
 app.include_router(agency.router)
+app.include_router(notifications.router)
+app.include_router(automations.router)

@@ -126,3 +126,25 @@ class InviteAcceptRequest(BaseModel):
     token: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
     full_name: Optional[str] = None
+
+
+class AutomationCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    trigger_event: Literal["file_needs_changes", "file_approved", "task_done", "comment_created"]
+    action_type: Literal["update_task_status", "notify_assignee", "notify_admins"]
+    action_config: dict = Field(default_factory=dict)
+    is_enabled: StrictBool = True
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Automation name is required")
+        return cleaned
+
+
+class AutomationUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    is_enabled: Optional[StrictBool] = None
+    action_config: Optional[dict] = None

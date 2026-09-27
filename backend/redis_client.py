@@ -88,7 +88,7 @@ def cache_unread_count(agency_id: str, user_id: str, count: int, ttl: int = 300)
         if r is None:
             return False
         key = f"agencydesk:unread:{agency_id}:{user_id}"
-        r.setex(key, ttl, count)
+        r.set(key, count, ex=ttl)
         return True
     except Exception:
         return False
