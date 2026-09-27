@@ -132,6 +132,32 @@ CREATE TABLE agency_invites (
     CONSTRAINT invite_client_same_agency FOREIGN KEY (agency_id, client_id) REFERENCES clients(agency_id, id),
     CONSTRAINT invite_client_role CHECK ((role = 'client_user' AND client_id IS NOT NULL) OR (role <> 'client_user' AND client_id IS NULL))
 );
+-- 12. NOTIFICATIONS TABLE
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agency_id UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id UUID,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 13. AUTOMATIONS TABLE
+CREATE TABLE automations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agency_id UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    trigger_event TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    action_config JSONB NOT NULL DEFAULT '{}',
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE UNIQUE INDEX users_email_case_insensitive ON users (lower(email));
 
 -- Only one pending invite per agency and email; historical accepted/revoked invites remain auditable.
@@ -144,3 +170,6 @@ CREATE INDEX idx_tasks_project_id ON tasks(project_id);
 CREATE INDEX idx_comments_task_id ON task_comments(task_id);
 CREATE INDEX idx_files_task_id ON task_files(task_id);
 CREATE INDEX idx_time_entries_task_id ON time_entries(task_id);
+CREATE INDEX idx_notifications_agency_user ON notifications(agency_id, user_id, is_read);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_automations_agency_trigger ON automations(agency_id, trigger_event, is_enabled);

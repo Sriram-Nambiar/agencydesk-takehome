@@ -23,7 +23,7 @@ def seed_database():
 
     print("Cleaning up existing data...")
     cur.execute("""
-        TRUNCATE agency_invites, time_entries, task_files, task_comments, tasks,
+        TRUNCATE notifications, automations, agency_invites, time_entries, task_files, task_comments, tasks,
                  project_members, projects, agency_memberships, clients, agencies, users
         CASCADE;
     """)
@@ -173,6 +173,31 @@ def seed_database():
         VALUES (%s, 'newcontact@starlight.com', 'client_user', %s, 'invite_token_998877', 'pending', '2026-10-31')
         """,
         (acme_id, starlight_client_id)
+    )
+
+    # 12. Automations (Default workflows for Acme)
+    print("Seeding Automations...")
+    cur.execute(
+        """
+        INSERT INTO automations (agency_id, name, trigger_event, action_type, action_config, is_enabled)
+        VALUES
+        (%s, 'Auto-reopen on Changes Requested', 'file_needs_changes', 'update_task_status', '{"target_status": "in_progress"}', TRUE),
+        (%s, 'Auto-complete on File Approval', 'file_approved', 'update_task_status', '{"target_status": "done"}', TRUE),
+        (%s, 'Notify Assignee on Client Comment', 'comment_created', 'notify_assignee', '{}', TRUE)
+        """,
+        (acme_id, acme_id, acme_id)
+    )
+
+    # 13. Notifications (Sample notifications for team & client)
+    print("Seeding Notifications...")
+    cur.execute(
+        """
+        INSERT INTO notifications (agency_id, user_id, title, message, type, entity_type, entity_id, is_read)
+        VALUES
+        (%s, %s, 'Task Assigned', 'You have been assigned to Homepage Wireframes & UI Kit', 'task_assigned', 'task', %s, FALSE),
+        (%s, %s, 'Project Ready for Review', 'Design assets for Q3 Website Redesign are ready for review', 'file_status_changed', 'project', %s, FALSE)
+        """,
+        (acme_id, sarah_id, public_task_id, acme_id, starlight_user_id, acme_project_id)
     )
 
     conn.commit()
