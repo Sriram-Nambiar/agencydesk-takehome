@@ -211,6 +211,20 @@ class ApiService {
     return fileUrl;
   }
 
+  async downloadTaskFile(fileId: string, fileName: string): Promise<void> {
+    const headers: Record<string, string> = {};
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    if (this.activeAgencyId) headers['X-Agency-ID'] = this.activeAgencyId;
+    const response = await fetch(`${API_BASE}/files/${fileId}/download`, { headers });
+    if (!response.ok) throw new Error(`Could not download file (HTTP ${response.status})`);
+    const blobUrl = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(blobUrl);
+  }
+
   async updateFileApproval(fileId: string, approvalStatus: 'approved' | 'needs_changes'): Promise<{ id: string; approval_status: FileApprovalStatus }> {
     return this.request<{ id: string; approval_status: FileApprovalStatus }>(`/files/${fileId}/approval`, {
       method: 'PATCH',

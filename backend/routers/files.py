@@ -1,7 +1,9 @@
 import os
 import uuid
 import shutil
+from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File as FastAPIFile, Form
+from fastapi.responses import FileResponse
 from database import get_db
 from schemas import FileUploadRequest, FileApprovalRequest
 from deps import get_current_user, get_membership, require_task_access, parse_uuid
@@ -9,6 +11,42 @@ from services.event_bus import dispatch_file_status_changed
 from config import get_settings
 
 router = APIRouter(tags=["Files & Approvals"])
+
+
+@router.get("/files/{file_id}/download")
+async def download_task_file(file_id: str, request: Request, user_id: str = Depends(get_current_user)):
+    """Download a stored upload only after checking the caller's task access."""
+    agency_id = request.headers.get("x-agency-id")
+    if not agency_id:
+        raise HTTPException(status_code=400, detail="Missing X-Agency-ID header")
+
+    conn = get_db()
+    try:
+        membership = get_membership(conn, user_id, agency_id)
+        file_id = parse_uuid(file_id, "File ID")
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT task_id, file_name, file_url, is_internal FROM task_files WHERE id = %s AND agency_id = %s",
+                (file_id, agency_id),
+            )
+            file_row = cur.fetchone()
+            if not file_row:
+                raise HTTPException(status_code=404, detail="File not found")
+            task = require_task_access(cur, file_row["task_id"], agency_id, membership)
+            if membership["role"] == "client_user" and (task["is_internal"] or file_row["is_internal"]):
+                raise HTTPException(status_code=404, detail="File not found")
+
+        stored_url = file_row["file_url"]
+        stored_name = stored_url.removeprefix("/uploads/")
+        if not stored_url.startswith("/uploads/") or not stored_name or Path(stored_name).name != stored_name:
+            raise HTTPException(status_code=404, detail="Stored file not found")
+        upload_root = Path(get_settings().UPLOAD_DIR).resolve()
+        resolved_path = (upload_root / stored_name).resolve()
+        if resolved_path.parent != upload_root or not resolved_path.is_file():
+            raise HTTPException(status_code=404, detail="Stored file not found")
+        return FileResponse(resolved_path, filename=Path(file_row["file_name"]).name)
+    finally:
+        conn.close()
 
 
 @router.get("/tasks/{task_id}/files")

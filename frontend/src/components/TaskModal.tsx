@@ -412,7 +412,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
                         <div key={file.id} className="file-row">
                           <div>
                             <div>
-                              <a href={api.resolveFileUrl(file.file_url)} target="_blank" rel="noreferrer" className="file-name">
+                              <a
+                                href={file.file_url.startsWith('/uploads/') ? '#' : api.resolveFileUrl(file.file_url)}
+                                target={file.file_url.startsWith('/uploads/') ? undefined : '_blank'}
+                                rel="noreferrer"
+                                className="file-name"
+                                onClick={file.file_url.startsWith('/uploads/') ? (event) => {
+                                  event.preventDefault();
+                                  void api.downloadTaskFile(file.id, file.file_name).catch((error: unknown) => {
+                                    alert(error instanceof Error ? error.message : 'Could not download file');
+                                  });
+                                } : undefined}
+                              >
                                 📎 {file.file_name}
                               </a>
                               {file.is_internal && (

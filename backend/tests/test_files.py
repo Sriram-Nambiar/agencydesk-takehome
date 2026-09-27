@@ -195,7 +195,9 @@ class TestFiles:
         )
         assert res.status_code == 400
 
-    def test_upload_file_multipart_success(self, client, member_acme_headers, sample_entities):
+    def test_upload_file_multipart_success(
+        self, client, member_acme_headers, client_acme_headers, sample_entities
+    ):
         pub_task_id = sample_entities["public_task"]["id"]
         file_content = b"%PDF-1.4 Mock Deliverable File Content"
         files = {"file": ("mock_design_spec.pdf", file_content, "application/pdf")}
@@ -214,10 +216,30 @@ class TestFiles:
         assert file_data["is_internal"] is False
         assert file_data["approval_status"] == "pending"
 
-        # Verify file is statically servable and content matches
-        download_res = client.get(file_data["file_url"])
+        # Stored files require authenticated, tenant-scoped download access.
+        download_res = client.get(f"/files/{file_data['id']}/download", headers=member_acme_headers)
         assert download_res.status_code == 200
         assert download_res.content == file_content
+
+        public_download = client.get(f"/files/{file_data['id']}/download", headers=client_acme_headers)
+        assert public_download.status_code == 200
+
+        internal_task_id = sample_entities["internal_task"]["id"]
+        internal_upload = client.post(
+            f"/tasks/{internal_task_id}/files/upload",
+            files={"file": ("secret.pdf", b"secret bytes", "application/pdf")},
+            headers=member_acme_headers,
+        )
+        assert internal_upload.status_code == 200
+        internal_download = client.get(
+            f"/files/{internal_upload.json()['id']}/download", headers=client_acme_headers
+        )
+        assert internal_download.status_code == 404
+
+        unauthenticated = client.get(f"/files/{file_data['id']}/download")
+        assert unauthenticated.status_code == 401
+        static_download = client.get(file_data["file_url"])
+        assert static_download.status_code == 404
 
     def test_upload_file_multipart_as_client_forbidden(
         self, client, client_acme_headers, sample_entities
