@@ -7,9 +7,10 @@ interface TaskModalProps {
   task: Task;
   onClose: () => void;
   onUpdateStatus: (taskId: string, status: TaskStatus) => void;
+  onUpdateVisibility?: (taskId: string, isInternal: boolean) => void;
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateStatus }) => {
+export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateStatus, onUpdateVisibility }) => {
   const { isClientUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'comments' | 'files' | 'time'>('comments');
 
@@ -193,6 +194,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, onUpdateSta
               <div>
                 <span style={{ color: '#5e6c84', marginRight: 4 }}>Due:</span>
                 <span>{task.due_date}</span>
+              </div>
+            )}
+
+            {!isClientUser && onUpdateVisibility && (
+              <div>
+                <span style={{ color: '#5e6c84', marginRight: 4 }}>Visibility:</span>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: 12, cursor: 'pointer' }}
+                  onClick={() => onUpdateVisibility(task.id, !task.is_internal)}
+                  title={task.is_internal ? 'Make task visible to client' : 'Make task internal to agency'}
+                >
+                  {task.is_internal ? '🔒 Internal (Make Public)' : '🌐 Public (Make Internal)'}
+                </button>
               </div>
             )}
           </div>

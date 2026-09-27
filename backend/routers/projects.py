@@ -102,8 +102,14 @@ async def get_agency_project(project_id: str, request: Request, user_id: str = D
 
 
 @router.delete("/{project_id}/members/{member_id}")
-async def remove_project_member(project_id: str, member_id: str, request: Request, user_id: str = Depends(get_current_user)):
-    """Revoke project access immediately while retaining task assignment history."""
+async def remove_project_member(
+    project_id: str,
+    member_id: str,
+    request: Request,
+    unassign_active: bool = False,
+    user_id: str = Depends(get_current_user)
+):
+    """Revoke project access immediately. If unassign_active=True, active (non-done) tasks are unassigned to prevent tasks becoming stuck."""
     agency_id = request.headers.get("x-agency-id")
     conn = get_db()
     try:
@@ -117,8 +123,24 @@ async def remove_project_member(project_id: str, member_id: str, request: Reques
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Agency member not found")
             cur.execute("DELETE FROM project_members WHERE project_id=%s AND user_id=%s", (project["id"], member_id))
+            unassigned_count = 0
+            if unassign_active:
+                cur.execute(
+                    """
+                    UPDATE tasks
+                    SET assignee_id = NULL
+                    WHERE project_id = %s AND agency_id = %s AND assignee_id = %s AND status != 'done'
+                    """,
+                    (project["id"], agency_id, member_id)
+                )
+                unassigned_count = cur.rowcount
             conn.commit()
-            return {"project_id": project_id, "member_id": member_id, "access": "removed"}
+            return {
+                "project_id": project_id,
+                "member_id": member_id,
+                "access": "removed",
+                "unassigned_tasks": unassigned_count
+            }
     finally:
         conn.close()
 

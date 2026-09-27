@@ -22,7 +22,8 @@ async def register(payload: RegisterRequest):
     try:
         with conn.cursor() as cur:
             # Check user exists
-            cur.execute("SELECT id FROM users WHERE email = %s", (payload.email,))
+            email_normalized = payload.email.strip().lower()
+            cur.execute("SELECT id FROM users WHERE lower(email) = lower(%s)", (email_normalized,))
             if cur.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -30,7 +31,7 @@ async def register(payload: RegisterRequest):
             hashed_pw = pwd_context.hash(payload.password)
             cur.execute(
                 "INSERT INTO users (email, password_hash, full_name) VALUES (%s, %s, %s) RETURNING id",
-                (payload.email, hashed_pw, payload.full_name)
+                (email_normalized, hashed_pw, payload.full_name)
             )
             user_id = cur.fetchone()["id"]
 
@@ -56,7 +57,7 @@ async def login(payload: LoginRequest):
     conn = get_db()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, password_hash FROM users WHERE email = %s", (payload.email,))
+            cur.execute("SELECT id, password_hash FROM users WHERE lower(email) = lower(%s)", (payload.email,))
             user = cur.fetchone()
             if not user or not pwd_context.verify(payload.password, user["password_hash"]):
                 raise HTTPException(status_code=401, detail="Invalid credentials")

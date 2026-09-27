@@ -63,6 +63,10 @@ class TaskStatusUpdateRequest(BaseModel):
     status: Literal["todo", "in_progress", "review", "done"]
 
 
+class TaskVisibilityUpdateRequest(BaseModel):
+    is_internal: StrictBool
+
+
 class CommentCreateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=5000)
     is_internal: StrictBool = False

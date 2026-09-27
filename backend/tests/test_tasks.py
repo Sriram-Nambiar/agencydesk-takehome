@@ -174,3 +174,68 @@ class TestTasks:
         # Nonexistent task ID
         res = client.patch(f"/tasks/{uuid.uuid4()}/status", json={"status": "done"}, headers=admin_acme_headers)
         assert res.status_code == 404
+
+    def test_update_task_visibility_as_staff(self, client, admin_acme_headers, sample_entities):
+        task_id = sample_entities["public_task"]["id"]
+
+        # Staff can toggle to internal
+        res = client.patch(f"/tasks/{task_id}/visibility", json={"is_internal": True}, headers=admin_acme_headers)
+        assert res.status_code == 200
+        assert res.json()["is_internal"] is True
+
+        # Staff can toggle back to client-visible
+        res = client.patch(f"/tasks/{task_id}/visibility", json={"is_internal": False}, headers=admin_acme_headers)
+        assert res.status_code == 200
+        assert res.json()["is_internal"] is False
+
+    def test_update_task_visibility_as_client_forbidden(self, client, client_acme_headers, sample_entities):
+        task_id = sample_entities["public_task"]["id"]
+        res = client.patch(f"/tasks/{task_id}/visibility", json={"is_internal": True}, headers=client_acme_headers)
+        assert res.status_code == 403
+        assert "Client users cannot change task visibility" in res.json().get("detail", "")
+
+    def test_task_visibility_toggle_cascades_to_children(self, client, admin_acme_headers, sample_entities):
+        project_id = sample_entities["project"]["id"]
+
+        # Create a new public task
+        task_res = client.post(
+            "/tasks",
+            headers=admin_acme_headers,
+            json={"project_id": project_id, "title": "Cascading Visibility Task", "is_internal": False}
+        )
+        assert task_res.status_code == 200
+        task_id = task_res.json()["id"]
+
+        # Add a public comment
+        comm_res = client.post(
+            f"/tasks/{task_id}/comments",
+            headers=admin_acme_headers,
+            json={"content": "Public comment initially", "is_internal": False}
+        )
+        assert comm_res.status_code == 200
+        assert comm_res.json()["is_internal"] is False
+
+        # Add a public file
+        file_res = client.post(
+            f"/tasks/{task_id}/files",
+            headers=admin_acme_headers,
+            json={"file_name": "public_doc.pdf", "file_url": "https://example.com/doc.pdf", "is_internal": False}
+        )
+        assert file_res.status_code == 200
+        assert file_res.json()["is_internal"] is False
+
+        # Flip task to internal
+        vis_res = client.patch(
+            f"/tasks/{task_id}/visibility",
+            headers=admin_acme_headers,
+            json={"is_internal": True}
+        )
+        assert vis_res.status_code == 200
+        assert vis_res.json()["is_internal"] is True
+
+        # Verify child comments and files were cascaded to internal
+        comments = client.get(f"/tasks/{task_id}/comments", headers=admin_acme_headers).json()["comments"]
+        assert all(c["is_internal"] is True for c in comments)
+
+        files = client.get(f"/tasks/{task_id}/files", headers=admin_acme_headers).json()["files"]
+        assert all(f["is_internal"] is True for f in files)

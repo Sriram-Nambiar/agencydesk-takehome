@@ -156,3 +156,62 @@ class TestProjects:
 
         put_res = client.put(f"/projects/{project_id}/members/{fake_user_id}", headers=admin_acme_headers)
         assert put_res.status_code == 404
+
+    def test_remove_member_with_unassign_active(
+        self, client, admin_acme_headers, sample_entities, sarah_user_id
+    ):
+        project_id = sample_entities["project"]["id"]
+
+        # Ensure Sarah is assigned to project
+        client.put(f"/projects/{project_id}/members/{sarah_user_id}", headers=admin_acme_headers)
+
+        # Create an active task assigned to Sarah
+        active_task_res = client.post(
+            "/tasks",
+            headers=admin_acme_headers,
+            json={
+                "project_id": project_id,
+                "title": "Active Work to be Unassigned",
+                "status": "in_progress",
+                "assignee_id": sarah_user_id,
+                "is_internal": False,
+            }
+        )
+        assert active_task_res.status_code == 200
+        active_task_id = active_task_res.json()["id"]
+
+        # Create a completed task assigned to Sarah
+        done_task_res = client.post(
+            "/tasks",
+            headers=admin_acme_headers,
+            json={
+                "project_id": project_id,
+                "title": "Completed Work History",
+                "status": "done",
+                "assignee_id": sarah_user_id,
+                "is_internal": False,
+            }
+        )
+        assert done_task_res.status_code == 200
+        done_task_id = done_task_res.json()["id"]
+
+        # Remove Sarah with unassign_active=True
+        del_res = client.delete(
+            f"/projects/{project_id}/members/{sarah_user_id}?unassign_active=true",
+            headers=admin_acme_headers
+        )
+        assert del_res.status_code == 200
+        assert del_res.json()["unassigned_tasks"] >= 1
+
+        # Check project tasks
+        admin_view = client.get(f"/projects/{project_id}", headers=admin_acme_headers)
+        assert admin_view.status_code == 200
+        tasks_by_id = {t["id"]: t for t in admin_view.json()["tasks"]}
+
+        # Active task was unassigned
+        assert tasks_by_id[active_task_id]["assignee_id"] is None
+        # Done task retained historical assignee
+        assert tasks_by_id[done_task_id]["assignee_id"] == sarah_user_id
+
+        # Restore Sarah to project for subsequent tests
+        client.put(f"/projects/{project_id}/members/{sarah_user_id}", headers=admin_acme_headers)

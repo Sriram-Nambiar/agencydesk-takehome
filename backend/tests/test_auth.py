@@ -66,3 +66,14 @@ class TestAuth:
         res = client.post("/auth/register", json=payload)
         assert res.status_code == 400
         assert "already registered" in res.json().get("detail", "").lower()
+
+    def test_register_duplicate_email_case_insensitive(self, client):
+        payload = {
+            "email": "ALEX@EXAMPLE.COM",
+            "password": "password123",
+            "full_name": "Alex Uppercase Dupe",
+            "agency_name": "Another Agency",
+        }
+        res = client.post("/auth/register", json=payload)
+        assert res.status_code == 400
+        assert "already registered" in res.json().get("detail", "").lower()

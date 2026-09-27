@@ -115,6 +115,21 @@ const WorkspaceDashboard: React.FC = () => {
     }
   };
 
+  // Task Visibility Update
+  const handleUpdateVisibility = async (taskId: string, isInternal: boolean) => {
+    try {
+      await api.updateTaskVisibility(taskId, isInternal);
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, is_internal: isInternal } : t))
+      );
+      if (activeTask && activeTask.id === taskId) {
+        setActiveTask((prev) => (prev ? { ...prev, is_internal: isInternal } : null));
+      }
+    } catch (err) {
+      alert(`Could not update visibility: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   // Filter Tasks
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -226,6 +241,7 @@ const WorkspaceDashboard: React.FC = () => {
           task={activeTask}
           onClose={() => setActiveTask(null)}
           onUpdateStatus={handleUpdateStatus}
+          onUpdateVisibility={handleUpdateVisibility}
         />
       )}
 

@@ -77,16 +77,19 @@ async def update_file_approval(file_id: str, request: Request, payload: FileAppr
             file_id = parse_uuid(file_id, "File ID")
             cur.execute("SELECT task_id, is_internal FROM task_files WHERE id = %s AND agency_id = %s", (file_id, agency_id))
             file_row = cur.fetchone()
-            if not file_row or file_row["is_internal"]:
+            if not file_row:
+                raise HTTPException(status_code=404, detail="File not found or not accessible")
+            if membership["role"] == "client_user" and file_row["is_internal"]:
                 raise HTTPException(status_code=404, detail="File not found or not accessible")
             require_task_access(cur, file_row["task_id"], agency_id, membership)
             if membership["role"] == "agency_member":
                 raise HTTPException(status_code=403, detail="Only clients and agency admins can approve files")
+            internal_filter = "AND is_internal = FALSE" if membership["role"] == "client_user" else ""
             cur.execute(
-                """
+                f"""
                 UPDATE task_files
                 SET approval_status = %s
-                WHERE id = %s AND agency_id = %s AND is_internal = FALSE
+                WHERE id = %s AND agency_id = %s {internal_filter}
                 RETURNING id, approval_status
                 """,
                 (payload.approval_status, file_id, agency_id)

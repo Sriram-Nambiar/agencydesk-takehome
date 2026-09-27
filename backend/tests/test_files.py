@@ -143,21 +143,36 @@ class TestFiles:
         assert client_approve.status_code == 200
         assert client_approve.json()["approval_status"] == "approved"
 
-    def test_approve_internal_file_returns_404(
-        self, client, admin_acme_headers, sample_entities
+    def test_client_approve_internal_file_returns_404(
+        self, client, admin_acme_headers, client_acme_headers, sample_entities
     ):
         int_task_id = sample_entities["internal_task"]["id"]
-        # Find internal file
         files_res = client.get(f"/tasks/{int_task_id}/files", headers=admin_acme_headers)
         int_file = next(f for f in files_res.json()["files"] if f["is_internal"])
 
-        # Attempt to approve internal file -> 404
+        # Client attempt to approve internal file -> 404 (strictly shielded)
+        res = client.patch(
+            f"/files/{int_file['id']}/approval",
+            json={"approval_status": "approved"},
+            headers=client_acme_headers,
+        )
+        assert res.status_code == 404
+
+    def test_admin_can_approve_internal_file(
+        self, client, admin_acme_headers, sample_entities
+    ):
+        int_task_id = sample_entities["internal_task"]["id"]
+        files_res = client.get(f"/tasks/{int_task_id}/files", headers=admin_acme_headers)
+        int_file = next(f for f in files_res.json()["files"] if f["is_internal"])
+
+        # Admin can approve internal review deliverables -> 200
         res = client.patch(
             f"/files/{int_file['id']}/approval",
             json={"approval_status": "approved"},
             headers=admin_acme_headers,
         )
-        assert res.status_code == 404
+        assert res.status_code == 200
+        assert res.json()["approval_status"] == "approved"
 
     def test_approve_file_validation_errors(self, client, admin_acme_headers, sample_entities):
         pub_task_id = sample_entities["public_task"]["id"]

@@ -154,6 +154,13 @@ class ApiService {
     });
   }
 
+  async updateTaskVisibility(taskId: string, isInternal: boolean): Promise<{ id: string; is_internal: boolean }> {
+    return this.request<{ id: string; is_internal: boolean }>(`/tasks/${taskId}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_internal: isInternal }),
+    });
+  }
+
   // Comments
   async getComments(taskId: string): Promise<TaskComment[]> {
     const res = await this.request<{ comments: TaskComment[] }>(`/tasks/${taskId}/comments`);

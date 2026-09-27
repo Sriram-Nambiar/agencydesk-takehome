@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from schemas import TaskCreateRequest, TaskStatusUpdateRequest
+from schemas import TaskCreateRequest, TaskStatusUpdateRequest, TaskVisibilityUpdateRequest
 from deps import get_current_user, get_membership, require_project_access, require_task_access
 from services.event_bus import dispatch_task_created, dispatch_task_status_changed
 
@@ -74,6 +74,53 @@ async def update_task_status(task_id: str, request: Request, payload: TaskStatus
             if not updated:
                 raise HTTPException(status_code=404, detail="Task not found in tenant")
             dispatch_task_status_changed(cur, agency_id, task_id, payload.status, user_id)
+            conn.commit()
+            return updated
+    finally:
+        conn.close()
+
+
+@router.patch("/{task_id}/visibility")
+async def update_task_visibility(
+    task_id: str,
+    request: Request,
+    payload: TaskVisibilityUpdateRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Toggle whether a task is internal (agency-only) or client-visible."""
+    agency_id = request.headers.get("x-agency-id")
+    conn = get_db()
+    try:
+        membership = get_membership(conn, user_id, agency_id)
+        if membership["role"] == "client_user":
+            raise HTTPException(status_code=403, detail="Client users cannot change task visibility")
+
+        with conn.cursor() as cur:
+            require_task_access(cur, task_id, agency_id, membership)
+            cur.execute(
+                """
+                UPDATE tasks
+                SET is_internal = %s
+                WHERE id = %s AND agency_id = %s
+                RETURNING id, is_internal
+                """,
+                (payload.is_internal, task_id, agency_id)
+            )
+            updated = cur.fetchone()
+            if not updated:
+                raise HTTPException(status_code=404, detail="Task not found in tenant")
+
+            # Cascade: if task made internal, ensure child comments and files are forced internal
+            if payload.is_internal:
+                cur.execute(
+                    "UPDATE task_comments SET is_internal = TRUE WHERE task_id = %s AND agency_id = %s",
+                    (task_id, agency_id)
+                )
+                cur.execute(
+                    "UPDATE task_files SET is_internal = TRUE WHERE task_id = %s AND agency_id = %s",
+                    (task_id, agency_id)
+                )
+
             conn.commit()
             return updated
     finally:
