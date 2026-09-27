@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 from jose import jwt, JWTError
 from datetime import datetime, date, timedelta
 from uuid import UUID
+import uuid
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,6 +38,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def security_and_tracing_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+@app.get("/healthz", tags=["Health"])
+def liveness_probe():
+    """Liveness probe: returns 200 when application process is running."""
+    return {"status": "ok", "service": "agencydesk-api"}
+
+
+@app.get("/readyz", tags=["Health"])
+def readiness_probe():
+    """Readiness probe: validates live PostgreSQL database connection."""
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        conn.close()
+        return {"status": "ready", "database": "connected"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {exc}")
+
 
 def get_db():
     return psycopg2.connect(
