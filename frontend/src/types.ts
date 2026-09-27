@@ -92,3 +92,27 @@ export interface AgencyClient {
   id: string;
   name: string;
 }
+
+export interface AppNotification {
+  id: string;
+  agency_id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface AutomationRule {
+  id: string;
+  agency_id: string;
+  name: string;
+  trigger_event: string;
+  action_type: string;
+  action_config: Record<string, any>;
+  is_enabled: boolean;
+  created_at: string;
+}

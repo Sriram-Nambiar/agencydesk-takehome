@@ -11,6 +11,8 @@ import type {
   TaskStatus,
   FileApprovalStatus,
   TaskPriority,
+  AppNotification,
+  AutomationRule,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -215,6 +217,42 @@ class ApiService {
   async getAgencyClients(): Promise<AgencyClient[]> {
     const res = await this.request<{ clients: AgencyClient[] }>('/agency/clients');
     return res.clients;
+  }
+
+  // Notifications
+  async getNotifications(unreadOnly = false): Promise<{ notifications: AppNotification[]; unread_count: number }> {
+    return this.request<{ notifications: AppNotification[]; unread_count: number }>(
+      `/notifications?unread_only=${unreadOnly}`
+    );
+  }
+
+  async getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+    return this.request<{ unread_count: number }>('/notifications/unread-count');
+  }
+
+  async markNotificationAsRead(id: string): Promise<AppNotification> {
+    return this.request<AppNotification>(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
+  }
+
+  async markAllNotificationsRead(): Promise<{ success: boolean; marked_count: number }> {
+    return this.request<{ success: boolean; marked_count: number }>('/notifications/read-all', {
+      method: 'POST',
+    });
+  }
+
+  // Automations
+  async getAutomations(): Promise<AutomationRule[]> {
+    const res = await this.request<{ automations: AutomationRule[] }>('/automations');
+    return res.automations;
+  }
+
+  async updateAutomation(id: string, data: { name?: string; is_enabled?: boolean }): Promise<AutomationRule> {
+    return this.request<AutomationRule>(`/automations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 }
 

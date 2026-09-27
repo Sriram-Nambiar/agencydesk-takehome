@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { NotificationPopover } from './NotificationPopover';
+import { AutomationsModal } from './AutomationsModal';
 
 export const Header: React.FC = () => {
   const { user, memberships, activeAgency, activeRole, switchAgency, logout, quickLogin } = useAuth();
+  const [isAutomationsOpen, setIsAutomationsOpen] = useState(false);
 
   const getRoleBadge = () => {
     if (activeRole === 'agency_admin') {
@@ -68,6 +71,21 @@ export const Header: React.FC = () => {
           </button>
         </div>
 
+        {/* Automations button for agency staff */}
+        {activeRole !== 'client_user' && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm automations-trigger"
+            onClick={() => setIsAutomationsOpen(true)}
+            title="Configure Redis Workflow Automations"
+          >
+            ⚡ Automations
+          </button>
+        )}
+
+        {/* Notifications Bell Popover */}
+        <NotificationPopover />
+
         {/* User Info & Role */}
         <div className="user-info">
           <span>{user?.full_name}</span>
@@ -79,6 +97,13 @@ export const Header: React.FC = () => {
           Sign Out
         </button>
       </div>
+
+      {/* Automations Config Modal */}
+      <AutomationsModal
+        isOpen={isAutomationsOpen}
+        onClose={() => setIsAutomationsOpen(false)}
+        isAdmin={activeRole === 'agency_admin'}
+      />
     </header>
   );
 };
