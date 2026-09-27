@@ -97,7 +97,7 @@ class TestProjects:
 
         # 2. Admin removes member
         del_res = client.delete(
-            f"/projects/{project_id}/members/{sarah_user_id}",
+            f"/projects/{project_id}/members/{sarah_user_id}?unassign_active=false",
             headers=admin_acme_headers
         )
         assert del_res.status_code == 200
@@ -197,7 +197,7 @@ class TestProjects:
 
         # Remove Sarah with unassign_active=True
         del_res = client.delete(
-            f"/projects/{project_id}/members/{sarah_user_id}?unassign_active=true",
+            f"/projects/{project_id}/members/{sarah_user_id}",
             headers=admin_acme_headers
         )
         assert del_res.status_code == 200

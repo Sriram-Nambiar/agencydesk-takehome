@@ -78,7 +78,7 @@ The identity model separates **authentication (who you are)** from **authorizati
 ## 4. Edge Case: Member Removal Mid-Task & Backlog Preservation
 
 **Policy Decision**: When an agency member is removed mid-sprint while assigned to tasks:
-1. **Incomplete Tasks (`todo`, `in_progress`, `review`)**: Unassigned (`assignee_id = NULL`) so they immediately return to the project backlog for reallocation and are not blocked.
+1. **Incomplete Tasks (`todo`, `in_progress`, `review`)**: Unassigned (`assignee_id = NULL`) by default so they immediately return to the project backlog for reallocation and are not blocked. An administrator can explicitly preserve assignments with `unassign_active=false` when needed.
 2. **Completed Tasks (`done`)**: Retain `assignee_id = user_id` to preserve historical audit attribution, timesheets, and performance history.
 3. **User Record Preserved**: The user's account in `users` is never deleted, as they may belong to other agencies or be invited back later.
 4. **Immediate Access Revocation**: Project membership in `project_members` is deleted, instantly returning `404` on any subsequent attempt by that user to read or modify project data.

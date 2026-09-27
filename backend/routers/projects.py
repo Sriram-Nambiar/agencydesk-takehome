@@ -106,10 +106,10 @@ async def remove_project_member(
     project_id: str,
     member_id: str,
     request: Request,
-    unassign_active: bool = False,
+    unassign_active: bool = True,
     user_id: str = Depends(get_current_user)
 ):
-    """Revoke project access immediately. If unassign_active=True, active (non-done) tasks are unassigned to prevent tasks becoming stuck."""
+    """Revoke access and return active tasks to the backlog by default."""
     agency_id = request.headers.get("x-agency-id")
     conn = get_db()
     try:
