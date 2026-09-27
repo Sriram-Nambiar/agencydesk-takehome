@@ -1,0 +1,9 @@
+# AgencyDesk design notes
+
+Every request derives a user from a signed bearer token and requires an active agency membership for the supplied `X-Agency-ID`. Queries include that agency id, and composite foreign keys on projects, tasks, comments, files, time entries, and client memberships reject cross-agency references even if application code supplies mismatched IDs. Agency members are additionally limited to projects listed in `project_members`; removing that membership immediately removes access. A task assignee is set to `NULL` when its user is deleted, preserving the task.
+
+Client access is scoped to the membership's client record. Shared project/task access checks run before detail, comments, file, and time routes. Client task queries exclude internal tasks; comment and file queries independently exclude internal records; internal tasks and their child records return not found to clients, including when IDs are guessed. Clients cannot change task status or log time. They can comment on visible tasks and approve or request changes on visible files. Staff time data is not returned through portal endpoints.
+
+`users` represent global identities with a case-insensitive unique email. `agency_memberships` assigns a separate role and optional client to that identity for each agency, so the same person can be staff in one tenant and a client in another. Invites are unique while pending per agency/email; resending rotates the existing pending invite instead of creating duplicates. (Invite acceptance can reuse an existing identity.)
+
+One edge case handled explicitly is a member losing project access while a task is assigned to them: an admin can remove their project membership through the API; project membership is checked on each request, so access ends immediately without deleting task history or the assignee relationship. Hard user deletion still nulls the assignee via `ON DELETE SET NULL`.
