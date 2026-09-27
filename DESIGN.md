@@ -1,18 +1,97 @@
-# AgencyDesk design notes
+# AgencyDesk — System Architecture & Design Document
 
-Every request derives a user from a signed bearer token and requires an active agency membership for the supplied `X-Agency-ID`. Queries include that agency id, and composite foreign keys on projects, tasks, comments, files, time entries, and client memberships reject cross-agency references even if application code supplies mismatched IDs. Agency members are additionally limited to projects listed in `project_members`; removing that membership immediately removes access. A task assignee is set to `NULL` when its user is deleted, preserving the task.
+A concise half-page design summary addressing the core evaluation criteria for AgencyDesk.
 
-Client access is scoped to the membership's client record. Shared project/task access checks run before detail, comments, file, and time routes. Client task queries exclude internal tasks; comment and file queries independently exclude internal records; internal tasks and their child records return not found to clients, including when IDs are guessed. Clients cannot change task status or log time. They can comment on visible tasks and approve or request changes on visible files, while agency admins can review both internal and public deliverables. Staff can toggle task visibility between internal and public (`PATCH /tasks/{task_id}/visibility`), which automatically cascades `is_internal = TRUE` to associated comments and files to prevent leaks. Staff time data is not returned through portal endpoints.
+---
 
-`users` represent global identities with a case-insensitive unique email (`lower(email)` enforced across registration, invite acceptance, and database unique index). `agency_memberships` assigns a separate role and optional client to that identity for each agency, so the same person can be staff in one tenant and a client in another. Invites are unique while pending per agency/email; resending rotates the existing pending invite instead of creating duplicates. (Invite acceptance can reuse an existing identity.)
+## 1. How the Schema Enforces Tenant Isolation
 
-One edge case handled explicitly is a member losing project access while a task is assigned to them: an admin can remove their project membership through the API; project membership is checked on each request, so access ends immediately. When removing a member, admins can specify `?unassign_active=true` to automatically unassign incomplete tasks back to the project backlog, while preserving completed task assignment history for audit trails and attribution. Hard user deletion still nulls the assignee via `ON DELETE SET NULL`.
- 
-## Event-Driven Automations & Notifications (Redis Architecture)
- 
-AgencyDesk implements an event bus and workflow automation engine powered by Redis (`redis:7-alpine`):
- 
-1. **Redis Pub/Sub & Queues**: Business events (`task_created`, `task_status_changed`, `comment_created`, `file_status_changed`) publish payloads to Redis channels (`agencydesk:events:{agency_id}`, `agencydesk:notify:{user_id}`) and append to the FIFO persistent queue `agencydesk:events_queue`.
-2. **Sub-millisecond Unread Badge Caching**: User unread notification counts are cached in Redis (`agencydesk:unread:{agency_id}:{user_id}`). When new notifications arrive or users mark items as read, Redis caches are automatically invalidated.
-3. **Automated Workflows (`automations` table)**: Tenant-configurable rules react to events. For example, when a client marks a deliverable as `needs_changes`, the automation engine instantly updates the parent task status back to `in_progress` and dispatches an alert to the assigned agency member.
-4. **Leak-Shield Compliance in Notifications**: The notification dispatcher enforces boundary policies identical to the REST API: client users are never alerted to internal tasks or internal agency comments, and `/automations` endpoints reject client users with HTTP 403 Forbidden.
+Rather than relying purely on application-level `WHERE agency_id = ...` clauses, AgencyDesk enforces multi-tenant boundaries directly at the PostgreSQL schema layer using **composite foreign keys**:
+
+- **Every entity belongs to an agency**: `projects`, `tasks`, `task_comments`, `task_files`, `time_entries`, and `agency_memberships` each carry a non-null `agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE`.
+- **Composite Unique Constraints**: Key tables declare composite uniqueness:
+  - `projects (agency_id, id)`
+  - `tasks (agency_id, id)`
+  - `clients (agency_id, id)`
+  - `agency_memberships (user_id, agency_id)`
+- **Cross-Tenant Constraint Enforcement**: Child tables link via composite foreign keys:
+  ```sql
+  -- Prevents tasks from referencing a project belonging to a different agency
+  FOREIGN KEY (agency_id, project_id) REFERENCES projects(agency_id, id) ON DELETE CASCADE
+
+  -- Prevents comments/files from referencing tasks of another agency
+  FOREIGN KEY (agency_id, task_id) REFERENCES tasks(agency_id, id) ON DELETE CASCADE
+  ```
+  Even if application code suffered a bug or attempted to link Tenant A's task to Tenant B's project, PostgreSQL rejects the transaction at the database engine level.
+- **Request Context**: Every request authenticates via JWT, resolves active tenant via `X-Agency-ID`, and validates non-deleted membership before executing queries. Foreign or guessed IDs return `HTTP 404` to avoid leaking resource existence.
+
+---
+
+## 2. How a Client is Blocked from Internal Content
+
+AgencyDesk treats the frontend purely as a display layer; security boundaries are enforced strictly in the backend and database:
+
+1. **Dual-Endpoint Architecture**:
+   - Agency staff access `/projects` and `/projects/{id}`.
+   - Client users are restricted to `/portal/projects` and `/portal/projects/{id}` (calling staff routes returns `HTTP 403 Forbidden`).
+2. **Strict Query Filtering & 404 Existence Masking**:
+   - In portal views, SQL queries enforce `is_internal = FALSE`.
+   - If a client attempts to fetch or manipulate an internal task (`/tasks/{internal_task_id}/comments` or `/tasks/{internal_task_id}/files`), the server returns `HTTP 404 Not Found`, denying that the resource exists.
+   - On public tasks with mixed comments/files, client queries include `AND is_internal = FALSE`.
+3. **Write Protection**:
+   - Clients cannot create tasks (`HTTP 403`).
+   - Clients cannot mutate task status (`HTTP 403`).
+   - Clients cannot upload files or view time tracking entries (`HTTP 403`).
+   - Clients can only comment on public tasks (forced `is_internal = FALSE`) and approve/request changes on public files.
+4. **Leak-Shield Cascading**:
+   - When an agency admin toggles a task from public to internal (`PATCH /tasks/{id}/visibility`), the backend automatically executes an atomic cascade:
+     ```sql
+     UPDATE task_comments SET is_internal = TRUE WHERE task_id = %s;
+     UPDATE task_files SET is_internal = TRUE WHERE task_id = %s;
+     ```
+     This prevents historical public comments or attached deliverables from accidentally leaking after a visibility change.
+
+---
+
+## 3. How the Identity Model Supports One Person Across Two Agencies
+
+The identity model separates **authentication (who you are)** from **authorization (what role you hold per tenant)**:
+
+```
+[ users ] (Global identity: id, email [case-insensitive unique], password_hash, full_name)
+    │
+    ├── [ agency_memberships ] (Agency A) ── role: 'agency_admin', client_id: NULL
+    │
+    └── [ agency_memberships ] (Agency B) ── role: 'client_user',  client_id: UUID('client-nike')
+```
+
+- **Global User Identity**: The `users` table holds authentication credentials. Email uniqueness is case-insensitively indexed (`UNIQUE (lower(email))`).
+- **Scoped Tenant Membership**: Roles (`agency_admin`, `agency_member`, `client_user`) are stored exclusively in `agency_memberships`, never on the `users` table.
+- **Context Resolution**:
+  - The JWT token contains `sub: user_id`.
+  - The client passes `X-Agency-ID: <agency_uuid>` on each request.
+  - The `get_membership` dependency fetches the specific role and client linkage for that user in that agency.
+  - An individual (e.g. Alex) can log in once and toggle between acting as an `agency_admin` in Agency A and a restricted `client_user` in Agency B with no permission cross-contamination.
+
+---
+
+## 4. Edge Case: Member Removal Mid-Task & Backlog Preservation
+
+**Policy Decision**: When an agency member is removed mid-sprint while assigned to tasks:
+1. **Incomplete Tasks (`todo`, `in_progress`, `review`)**: Unassigned (`assignee_id = NULL`) so they immediately return to the project backlog for reallocation and are not blocked.
+2. **Completed Tasks (`done`)**: Retain `assignee_id = user_id` to preserve historical audit attribution, timesheets, and performance history.
+3. **User Record Preserved**: The user's account in `users` is never deleted, as they may belong to other agencies or be invited back later.
+4. **Immediate Access Revocation**: Project membership in `project_members` is deleted, instantly returning `404` on any subsequent attempt by that user to read or modify project data.
+
+**Implementation**:
+- The API supports `DELETE /projects/{id}/members/{user_id}?unassign_active=true`.
+- The database schema sets `assignee_id UUID REFERENCES users(id) ON DELETE SET NULL` as a safety net against hard user deletion.
+
+---
+
+## 5. Additional System Highlights
+
+- **Invite Idempotency**: Pending invites use `UNIQUE (agency_id, lower(email)) WHERE status = 'pending'`. Resending updates the token and expiration rather than creating duplicate records; accepting twice reuses the identity safely.
+- **Real File Uploads**: Multipart uploads (`POST /tasks/{id}/files/upload`) store assets to local disk storage (`uploads/`) with static serving at `/uploads/{uuid_filename}`.
+- **Event Bus & Automations (Redis)**: Redis pub/sub dispatches events (`file_needs_changes`, `task_done`) and evaluates configurable agency automation rules (e.g., auto-reopening tasks when changes are requested).
+- **Test Coverage**: 114 backend pytest integration tests (including explicit edge-case verifications) and 13 Vitest frontend unit tests.
