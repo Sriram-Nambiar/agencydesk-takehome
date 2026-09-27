@@ -3,6 +3,7 @@ from database import get_db
 from schemas import TaskCreateRequest, TaskStatusUpdateRequest, TaskVisibilityUpdateRequest
 from deps import get_current_user, get_membership, require_project_access, require_task_access
 from services.event_bus import dispatch_task_created, dispatch_task_status_changed
+from services.audit import record_audit_event
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -96,7 +97,7 @@ async def update_task_visibility(
             raise HTTPException(status_code=403, detail="Client users cannot change task visibility")
 
         with conn.cursor() as cur:
-            require_task_access(cur, task_id, agency_id, membership)
+            task = require_task_access(cur, task_id, agency_id, membership)
             cur.execute(
                 """
                 UPDATE tasks
@@ -120,6 +121,16 @@ async def update_task_visibility(
                     "UPDATE task_files SET is_internal = TRUE WHERE task_id = %s AND agency_id = %s",
                     (task_id, agency_id)
                 )
+
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="task.visibility_changed",
+                entity_type="task",
+                entity_id=task_id,
+                details={"from_internal": task["is_internal"], "to_internal": payload.is_internal},
+            )
 
             conn.commit()
             return updated

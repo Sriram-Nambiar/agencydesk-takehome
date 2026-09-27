@@ -37,6 +37,14 @@ def setup_test_db():
                 with open(schema_path, encoding="utf-8") as schema_file:
                     cur.execute(schema_file.read())
                 conn.commit()
+            cur.execute("SELECT to_regclass('public.audit_events')")
+            if cur.fetchone()[0] is None:
+                migration_path = os.path.join(
+                    os.path.dirname(__file__), "..", "migrations", "003_audit_events.sql"
+                )
+                with open(migration_path, encoding="utf-8") as migration_file:
+                    cur.execute(migration_file.read())
+                conn.commit()
     finally:
         conn.close()
     seed_database()

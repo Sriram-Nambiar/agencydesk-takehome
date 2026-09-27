@@ -179,6 +179,18 @@ CREATE TABLE automations (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 14. AUDIT EVENTS
+CREATE TABLE audit_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agency_id UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id UUID NOT NULL,
+    details JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE UNIQUE INDEX users_email_case_insensitive ON users (lower(email));
 
 -- Only one pending invite per agency and email; historical accepted/revoked invites remain auditable.
@@ -194,3 +206,4 @@ CREATE INDEX idx_time_entries_task_id ON time_entries(task_id);
 CREATE INDEX idx_notifications_agency_user ON notifications(agency_id, user_id, is_read);
 CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
 CREATE INDEX idx_automations_agency_trigger ON automations(agency_id, trigger_event, is_enabled);
+CREATE INDEX idx_audit_events_agency_created ON audit_events(agency_id, created_at DESC);

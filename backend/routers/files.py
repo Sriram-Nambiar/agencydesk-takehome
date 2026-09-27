@@ -8,6 +8,7 @@ from database import get_db
 from schemas import FileUploadRequest, FileApprovalRequest
 from deps import get_current_user, get_membership, require_task_access, parse_uuid
 from services.event_bus import dispatch_file_status_changed
+from services.audit import record_audit_event
 from config import get_settings
 
 router = APIRouter(tags=["Files & Approvals"])
@@ -48,6 +49,16 @@ async def download_task_file(file_id: str, request: Request, user_id: str = Depe
         resolved_path = (upload_root / stored_name).resolve()
         if resolved_path.parent != upload_root or not resolved_path.is_file():
             raise HTTPException(status_code=404, detail="Stored file not found")
+        with conn.cursor() as cur:
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="file.downloaded",
+                entity_type="file",
+                entity_id=file_id,
+            )
+            conn.commit()
         return FileResponse(resolved_path, filename=Path(file_row["file_name"]).name)
     finally:
         conn.close()
@@ -202,6 +213,15 @@ async def update_file_approval(file_id: str, request: Request, payload: FileAppr
             updated = cur.fetchone()
             if not updated:
                 raise HTTPException(status_code=404, detail="File not found or not accessible")
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="file.approval_updated",
+                entity_type="file",
+                entity_id=file_id,
+                details={"approval_status": payload.approval_status},
+            )
             dispatch_file_status_changed(
                 cur=cur,
                 agency_id=agency_id,

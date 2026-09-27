@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from deps import get_current_user, get_membership, require_project_access, parse_uuid
+from services.audit import record_audit_event
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -134,6 +135,15 @@ async def remove_project_member(
                     (project["id"], agency_id, member_id)
                 )
                 unassigned_count = cur.rowcount
+            record_audit_event(
+                cur,
+                agency_id=agency_id,
+                actor_id=user_id,
+                action="project.member_removed",
+                entity_type="project",
+                entity_id=project["id"],
+                details={"member_id": str(member_id), "unassigned_tasks": unassigned_count},
+            )
             conn.commit()
             return {
                 "project_id": project_id,
