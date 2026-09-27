@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends
 from database import get_db
 from schemas import CommentCreateRequest
 from deps import get_current_user, get_membership, require_task_access
+from services.event_bus import dispatch_comment_created
 
 router = APIRouter(prefix="/tasks", tags=["Comments"])
 
@@ -57,6 +58,14 @@ async def add_comment(task_id: str, request: Request, payload: CommentCreateRequ
                 (agency_id, task_id, user_id, payload.content, is_internal)
             )
             comment = cur.fetchone()
+            dispatch_comment_created(
+                cur=cur,
+                agency_id=agency_id,
+                task_id=task_id,
+                comment=comment,
+                author_id=user_id,
+                is_client=(membership["role"] == "client_user"),
+            )
             conn.commit()
             return comment
     finally:

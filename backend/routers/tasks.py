@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from schemas import TaskCreateRequest, TaskStatusUpdateRequest
 from deps import get_current_user, get_membership, require_project_access, require_task_access
+from services.event_bus import dispatch_task_created, dispatch_task_status_changed
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -47,6 +48,7 @@ async def create_task(request: Request, payload: TaskCreateRequest, user_id: str
                 )
             )
             task = cur.fetchone()
+            dispatch_task_created(cur, agency_id, task, user_id)
             conn.commit()
             return task
     finally:
@@ -71,6 +73,7 @@ async def update_task_status(task_id: str, request: Request, payload: TaskStatus
             updated = cur.fetchone()
             if not updated:
                 raise HTTPException(status_code=404, detail="Task not found in tenant")
+            dispatch_task_status_changed(cur, agency_id, task_id, payload.status, user_id)
             conn.commit()
             return updated
     finally:

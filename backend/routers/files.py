@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from schemas import FileUploadRequest, FileApprovalRequest
 from deps import get_current_user, get_membership, require_task_access, parse_uuid
+from services.event_bus import dispatch_file_status_changed
 
 router = APIRouter(tags=["Files & Approvals"])
 
@@ -92,6 +93,13 @@ async def update_file_approval(file_id: str, request: Request, payload: FileAppr
             updated = cur.fetchone()
             if not updated:
                 raise HTTPException(status_code=404, detail="File not found or not accessible")
+            dispatch_file_status_changed(
+                cur=cur,
+                agency_id=agency_id,
+                file_id=str(file_id),
+                approval_status=payload.approval_status,
+                actor_id=user_id,
+            )
             conn.commit()
             return updated
     finally:
