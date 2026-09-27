@@ -1,9 +1,9 @@
 import os
 import uuid
-import shutil
 from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException, Depends, UploadFile, File as FastAPIFile, Form
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 from database import get_db
 from schemas import FileUploadRequest, FileApprovalRequest
 from deps import get_current_user, get_membership, require_task_access, parse_uuid
@@ -11,6 +11,10 @@ from services.event_bus import dispatch_file_status_changed
 from config import get_settings
 
 router = APIRouter(tags=["Files & Approvals"])
+ALLOWED_UPLOAD_EXTENSIONS = {
+    ".csv", ".docx", ".gif", ".jpeg", ".jpg", ".pdf", ".png", ".pptx",
+    ".txt", ".webp", ".xlsx", ".zip",
+}
 
 
 @router.get("/files/{file_id}/download")
@@ -134,27 +138,36 @@ async def upload_task_file_multipart(
             upload_dir = get_settings().UPLOAD_DIR
             os.makedirs(upload_dir, exist_ok=True)
 
-            original_filename = file.filename or "uploaded_file"
-            file_ext = os.path.splitext(original_filename)[1]
-            stored_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = os.path.join(upload_dir, stored_filename)
+            original_filename = (file.filename or "uploaded_file").replace("\\", "/").rsplit("/", 1)[-1]
+            file_ext = Path(original_filename).suffix.lower()
+            if file_ext not in ALLOWED_UPLOAD_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="Unsupported file type")
+            settings = get_settings()
+            contents = await file.read(settings.UPLOAD_MAX_BYTES + 1)
+            if len(contents) > settings.UPLOAD_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="File exceeds the 20 MB upload limit")
 
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            stored_filename = f"{uuid.uuid4()}{file_ext}"
+            file_path = Path(upload_dir) / stored_filename
+            await run_in_threadpool(file_path.write_bytes, contents)
 
             file_url = f"/uploads/{stored_filename}"
-
-            cur.execute(
-                """
-                INSERT INTO task_files (agency_id, task_id, uploader_id, file_name, file_url, approval_status, is_internal)
-                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                RETURNING *
-                """,
-                (agency_id, task_id, user_id, original_filename, file_url, file_internal),
-            )
-            file_entry = cur.fetchone()
-            conn.commit()
-            return file_entry
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO task_files (agency_id, task_id, uploader_id, file_name, file_url, approval_status, is_internal)
+                    VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                    RETURNING *
+                    """,
+                    (agency_id, task_id, user_id, original_filename, file_url, file_internal),
+                )
+                file_entry = cur.fetchone()
+                conn.commit()
+                return file_entry
+            except Exception:
+                conn.rollback()
+                await run_in_threadpool(file_path.unlink, missing_ok=True)
+                raise
     finally:
         conn.close()
 

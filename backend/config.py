@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # Local File Uploads Directory
     UPLOAD_DIR: str = "uploads"
+    UPLOAD_MAX_BYTES: int = 20 * 1024 * 1024
 
     model_config = SettingsConfigDict(
         env_file=".env",

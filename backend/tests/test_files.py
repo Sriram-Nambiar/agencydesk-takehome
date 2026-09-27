@@ -254,6 +254,26 @@ class TestFiles:
         assert res.status_code == 403
         assert "Clients cannot upload files" in res.json().get("detail", "")
 
+    def test_multipart_upload_rejects_unsupported_extension(self, client, member_acme_headers, sample_entities):
+        response = client.post(
+            f"/tasks/{sample_entities['public_task']['id']}/files/upload",
+            files={"file": ("payload.html", b"<script>alert(1)</script>", "text/html")},
+            headers=member_acme_headers,
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Unsupported file type"
+
+    def test_multipart_upload_rejects_oversized_file(self, client, member_acme_headers, sample_entities):
+        from config import get_settings
+
+        max_bytes = get_settings().UPLOAD_MAX_BYTES
+        response = client.post(
+            f"/tasks/{sample_entities['public_task']['id']}/files/upload",
+            files={"file": ("too-large.pdf", b"x" * (max_bytes + 1), "application/pdf")},
+            headers=member_acme_headers,
+        )
+        assert response.status_code == 413
+
     def test_upload_file_multipart_inherits_internal_status(
         self, client, admin_acme_headers, sample_entities
     ):
