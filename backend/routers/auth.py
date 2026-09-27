@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Depends
 from jose import jwt
@@ -5,11 +6,15 @@ from jose import jwt
 from database import get_db
 from schemas import RegisterRequest, LoginRequest
 from deps import SECRET_KEY, ALGORITHM, pwd_context, get_current_user
+from rate_limiter import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+AUTH_RATE_LIMIT_LOGIN = int(os.getenv("AUTH_RATE_LIMIT_LOGIN", "60"))
+AUTH_RATE_LIMIT_REGISTER = int(os.getenv("AUTH_RATE_LIMIT_REGISTER", "20"))
 
-@router.post("/register")
+
+@router.post("/register", dependencies=[Depends(rate_limit(limit=AUTH_RATE_LIMIT_REGISTER, window_seconds=60))])
 async def register(payload: RegisterRequest):
     conn = get_db()
     try:
@@ -44,7 +49,7 @@ async def register(payload: RegisterRequest):
         conn.close()
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit(limit=AUTH_RATE_LIMIT_LOGIN, window_seconds=60))])
 async def login(payload: LoginRequest):
     conn = get_db()
     try:
