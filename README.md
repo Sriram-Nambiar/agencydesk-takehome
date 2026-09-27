@@ -1,5 +1,13 @@
 # AgencyDesk
 
+[![CI](https://github.com/Sriram-Nambiar/agencydesk-takehome/actions/workflows/ci.yml/badge.svg)](https://github.com/Sriram-Nambiar/agencydesk-takehome/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-1.0-009688?logo=fastapi)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
+
 > A multi-tenant client & project management platform purpose-built for agency-client collaboration with strict data isolation, client leak-shield boundaries, and Redis-powered workflow automations.
 
 ---
