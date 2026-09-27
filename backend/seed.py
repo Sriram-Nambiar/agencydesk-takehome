@@ -2,12 +2,14 @@ import os
 import psycopg2
 from passlib.context import CryptContext
 
-# DB Configuration matching main.py
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "agencydesk")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "devpass")
-DB_PORT = os.getenv("DB_PORT", "5432")
+from config import get_settings
+
+settings = get_settings()
+DB_HOST = settings.DB_HOST
+DB_NAME = settings.DB_NAME
+DB_USER = settings.DB_USER
+DB_PASS = settings.DB_PASS
+DB_PORT = settings.DB_PORT
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

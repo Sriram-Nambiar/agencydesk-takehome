@@ -6,10 +6,13 @@ import redis
 
 logger = logging.getLogger(__name__)
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+from config import get_settings
+
+settings = get_settings()
+REDIS_HOST = settings.REDIS_HOST
+REDIS_PORT = settings.REDIS_PORT
+REDIS_DB = settings.REDIS_DB
+REDIS_PASSWORD = settings.REDIS_PASSWORD
 
 _redis_pool: Optional[redis.ConnectionPool] = None
 
@@ -17,14 +20,15 @@ _redis_pool: Optional[redis.ConnectionPool] = None
 def get_redis_pool() -> redis.ConnectionPool:
     global _redis_pool
     if _redis_pool is None:
+        cfg = get_settings()
         _redis_pool = redis.ConnectionPool(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            password=REDIS_PASSWORD,
+            host=cfg.REDIS_HOST,
+            port=cfg.REDIS_PORT,
+            db=cfg.REDIS_DB,
+            password=cfg.REDIS_PASSWORD,
             decode_responses=True,
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0,
+            socket_timeout=cfg.REDIS_SOCKET_TIMEOUT,
+            socket_connect_timeout=cfg.REDIS_SOCKET_TIMEOUT,
         )
     return _redis_pool
 

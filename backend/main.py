@@ -16,6 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agencydesk.access")
 
+from config import get_settings
 from database import get_db, get_connection_pool, close_connection_pool
 from redis_client import get_redis_pool, close_redis_pool, ping_redis
 from deps import (
@@ -65,7 +66,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if origin.strip()],
+    allow_origins=get_settings().cors_origins_list,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -7,11 +7,13 @@ from database import get_db
 from schemas import RegisterRequest, LoginRequest
 from deps import SECRET_KEY, ALGORITHM, pwd_context, get_current_user
 from rate_limiter import rate_limit
+from config import get_settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-AUTH_RATE_LIMIT_LOGIN = int(os.getenv("AUTH_RATE_LIMIT_LOGIN", "60"))
-AUTH_RATE_LIMIT_REGISTER = int(os.getenv("AUTH_RATE_LIMIT_REGISTER", "20"))
+settings = get_settings()
+AUTH_RATE_LIMIT_LOGIN = settings.AUTH_RATE_LIMIT_LOGIN
+AUTH_RATE_LIMIT_REGISTER = settings.AUTH_RATE_LIMIT_REGISTER
 
 
 @router.post("/register", dependencies=[Depends(rate_limit(limit=AUTH_RATE_LIMIT_REGISTER, window_seconds=60))])

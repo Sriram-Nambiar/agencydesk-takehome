@@ -3,27 +3,32 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
+from config import get_settings
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "agencydesk")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "devpass")
-DB_PORT = os.getenv("DB_PORT", "5432")
+settings = get_settings()
+DB_HOST = settings.DB_HOST
+DB_NAME = settings.DB_NAME
+DB_USER = settings.DB_USER
+DB_PASS = settings.DB_PASS
+DB_PORT = str(settings.DB_PORT)
 
 _pool: ThreadedConnectionPool | None = None
 
 
-def get_connection_pool(minconn: int = 2, maxconn: int = 20) -> ThreadedConnectionPool:
+def get_connection_pool(minconn: int | None = None, maxconn: int | None = None) -> ThreadedConnectionPool:
     global _pool
+    cfg = get_settings()
+    actual_min = minconn if minconn is not None else cfg.DB_MIN_CONN
+    actual_max = maxconn if maxconn is not None else cfg.DB_MAX_CONN
     if _pool is None or _pool.closed:
         _pool = ThreadedConnectionPool(
-            minconn=minconn,
-            maxconn=maxconn,
-            host=DB_HOST,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASS,
-            port=DB_PORT,
+            minconn=actual_min,
+            maxconn=actual_max,
+            host=cfg.DB_HOST,
+            dbname=cfg.DB_NAME,
+            user=cfg.DB_USER,
+            password=cfg.DB_PASS,
+            port=cfg.DB_PORT,
             cursor_factory=RealDictCursor,
         )
     return _pool

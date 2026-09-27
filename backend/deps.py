@@ -6,11 +6,11 @@ from fastapi import Request, HTTPException
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
-SECRET_KEY = os.getenv("SECRET_KEY", "")
-ALGORITHM = "HS256"
-if not SECRET_KEY and os.getenv("ENVIRONMENT") == "production":
-    raise RuntimeError("SECRET_KEY must be configured in production")
-SECRET_KEY = SECRET_KEY or "dev-only-change-me-before-deploying"
+from config import get_settings
+
+settings = get_settings()
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
