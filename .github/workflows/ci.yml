@@ -77,5 +77,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Run Component Unit Tests
+        run: npm test
+
       - name: Typecheck and Build Production Bundle
         run: npm run build
+
