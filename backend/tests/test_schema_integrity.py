@@ -4,6 +4,30 @@ from database import get_db, DB_HOST, DB_NAME, DB_USER, DB_PASS, DB_PORT
 
 
 class TestSchemaIntegrityAndEdgeCases:
+    def test_schema_rejects_cross_agency_task_assignee(self, agencies):
+        """A task cannot name a user who has no membership in its agency."""
+        conn = psycopg2.connect(
+            host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT
+        )
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT id FROM projects WHERE agency_id = %s LIMIT 1", (agencies["beta"],))
+            beta_project_id = cur.fetchone()[0]
+            cur.execute("SELECT id FROM users WHERE email = 'sarah@acme.com'")
+            acme_only_user_id = cur.fetchone()[0]
+
+            with pytest.raises(psycopg2.IntegrityError, match="task_assignee_same_agency"):
+                cur.execute(
+                    """INSERT INTO tasks (agency_id, project_id, title, assignee_id)
+                       VALUES (%s, %s, 'Invalid cross agency assignment', %s)""",
+                    (agencies["beta"], beta_project_id, acme_only_user_id),
+                )
+                conn.commit()
+        finally:
+            conn.rollback()
+            cur.close()
+            conn.close()
+
     def test_schema_enforces_project_member_same_agency(self, agencies):
         """
         Schema Verification:

@@ -36,6 +36,7 @@ CREATE TABLE agency_memberships (
     removed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_user_agency UNIQUE (user_id, agency_id),
+    CONSTRAINT unique_agency_user UNIQUE (agency_id, user_id),
     CONSTRAINT membership_client_same_agency FOREIGN KEY (agency_id, client_id) REFERENCES clients(agency_id, id),
     CONSTRAINT membership_client_role CHECK ((role = 'client_user' AND client_id IS NOT NULL) OR (role <> 'client_user' AND client_id IS NULL))
 );
@@ -87,12 +88,14 @@ CREATE TABLE tasks (
     title TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'todo',
     priority TEXT NOT NULL DEFAULT 'medium',
-    assignee_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Handles mid-task member deletion
+    assignee_id UUID,
     due_date DATE,
     is_internal BOOLEAN NOT NULL DEFAULT FALSE, -- Client leak shield
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (agency_id, id),
     CONSTRAINT task_project_same_agency FOREIGN KEY (agency_id, project_id) REFERENCES projects(agency_id, id),
+    CONSTRAINT task_assignee_same_agency FOREIGN KEY (agency_id, assignee_id)
+        REFERENCES agency_memberships(agency_id, user_id) ON DELETE SET NULL (assignee_id),
     CONSTRAINT task_status_valid CHECK (status IN ('todo', 'in_progress', 'review', 'done')),
     CONSTRAINT task_priority_valid CHECK (priority IN ('low', 'medium', 'high', 'urgent'))
 );
